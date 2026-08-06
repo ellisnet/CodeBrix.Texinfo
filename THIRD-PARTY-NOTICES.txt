@@ -1,0 +1,32 @@
+THIRD-PARTY SOFTWARE NOTICES AND INFORMATION
+
+CodeBrix.Texinfo is a pair of .NET libraries that render GNU Texinfo
+documentation into HTML and CSS, and from there into PDF documents.
+CodeBrix.Texinfo2Html and CodeBrix.Texinfo2Pdf do not incorporate any
+third-party source code into their own assemblies. They are original
+implementations that read the Texinfo file format; they are not derived
+from, and contain no code from, the GNU Texinfo project or from any
+other Texinfo implementation.
+
+CodeBrix.Texinfo2Pdf consumes the CodeBrix.PdfDocCreate.Html2Pdf NuGet
+package to perform the final HTML-and-CSS to PDF rendering step. That is
+a package dependency resolved at build time, not source code copied into
+this repository, and it ships with its own license and notices.
+
+"Texinfo" is the name of the documentation format and of the GNU project
+that defines it. It is used here only to describe the file format these
+libraries read; no affiliation with or endorsement by the GNU Project is
+claimed or implied.
+
+Jeremy Ellis and contributors license the CodeBrix.Texinfo project
+to you under the terms set forth in the LICENSE file, which is located at
+the root of this repository.
+
+If you have any questions about any third-party code or services referenced
+here, or if you believe that any third-party code has been included in
+CodeBrix.Texinfo in error, please open a new issue at:
+https://github.com/ellisnet/CodeBrix.Texinfo/issues
+
+================================================================================
+
+END OF THIRD-PARTY SOFTWARE NOTICES AND INFORMATION
