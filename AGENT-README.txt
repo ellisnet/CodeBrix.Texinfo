@@ -33,30 +33,57 @@ Both libraries read two input dialects:
 CURRENT STATUS - READ THIS FIRST
 --------------------------------------------------------------------------------
 
-This repository is currently a SCAFFOLD. The solution, both library projects,
-both test projects, the NuGet packaging metadata and the family documentation
-files are all in place and the solution builds clean, but NEITHER LIBRARY
-EXPOSES A PUBLIC API YET. The Texinfo parsing and rendering functionality is
-still to be written.
+This repository is under construction, and the two libraries are at very
+different stages.
 
-Consequences for an agent working in this repository:
+CodeBrix.Texinfo2Html HAS A PUBLIC API and renders Texinfo to HTML and CSS
+end to end. Its whole pipeline is in place:
 
-  * Do not assume any type described below exists. There is no CORE API
-    REFERENCE section yet because there is no public API to document.
-  * The two src projects contain only InternalsVisibleTo.cs. When you add the
-    first real source files, organize them into sub-folders and matching
-    sub-namespaces from the outset (see ARCHITECTURE below) rather than piling
-    them at the project root.
-  * The two test projects each contain a single LibraryPackagingSmoke.cs that
-    exercises assembly identity, the date-stamped version stamping, the
-    InternalsVisibleTo wiring, and - for CodeBrix.Texinfo2Pdf - that the
-    CodeBrix.Texinfo2Html and CodeBrix.PdfDocCreate.Html2Pdf assemblies flow
-    through to the test output. Those tests exist so the suite is green and
-    meaningful while the libraries are empty; they are not a substitute for
-    real functional tests and should be joined by real tests, not replaced by
-    them, as functionality lands.
-  * Update this file as the public API appears. Document what is true, never
-    what is planned.
+  Sources/        source loading, encoding and line-ending handling
+  Lexing/         a lossless Texinfo lexer with raw-block capture
+  Preprocessing/  @include with search paths, @set/@clear/@value, conditional
+                  profiles, raw output blocks, comments, @verbatiminclude, and
+                  full @macro/@rmacro/@unmacro/@alias expansion
+  Parsing/        the parser and its table of built-in commands
+  Model/          the parsed document tree - sections, blocks, inline runs,
+                  plus the anchor, index, footnote and settings tables
+  Semantics/      section numbering, HTML identifier allocation, heading
+                  ranking and table-of-contents construction
+  Emit/           the HTML emitter, the default print stylesheet, the document
+                  builder and image reference resolution
+  Diagnostics/    collected warnings, used instead of exceptions throughout
+
+Everything except the types named in CORE API REFERENCE below is internal, and
+is exercised directly by the test project through InternalsVisibleTo.
+
+CodeBrix.Texinfo2Pdf STILL CONTAINS ONLY InternalsVisibleTo.cs. It has no
+public API. A consumer who wants a PDF today renders to HTML and CSS with
+CodeBrix.Texinfo2Html and hands the result to
+CodeBrix.PdfDocCreate.Html2Pdf.HtmlPdfRenderer, which is exactly what the
+end-to-end gate test in tests/CodeBrix.Texinfo2Pdf.Tests does.
+
+What CodeBrix.Texinfo2Html does NOT do yet, so that no agent documents it as
+though it did:
+
+  * Cross references (@ref, @xref, @pxref) render as their visible text and do
+    not link to their destination. The destinations themselves exist: every
+    node, anchor and section already carries a unique HTML identifier.
+  * Indices are collected but not rendered. @printindex produces nothing and
+    one warning.
+  * @lilypond and @lilypondfile snippets are emitted as their source text in a
+    preformatted block, with one warning per document. There is no renderer
+    seam for engraving them yet.
+  * Texinfo's text conventions for dashes and quotation marks (---, --, `` and
+    '') are passed through as written rather than converted.
+  * Accent commands (@'e, @"o and the rest) are not implemented. The 47
+    no-argument glyph commands are.
+  * The definition-command family (@deffn, @defun, ...) and @float parse as
+    plain block environments and warn once each.
+
+Keep new source files organized into sub-folders and matching sub-namespaces
+(see ARCHITECTURE below); only the entry-point types belong at a project root.
+Update this file as the public API grows. Document what is true, never what is
+planned.
 
 
 INSTALLATION
@@ -88,10 +115,105 @@ KEY NAMESPACES
     using CodeBrix.Texinfo2Html;    //Texinfo source -> HTML and CSS
     using CodeBrix.Texinfo2Pdf;     //Texinfo source -> PDF, in one step
 
-Sub-namespaces will be added underneath these two roots as the libraries are
-built out. There is no separate CodeBrix.Texinfo namespace and no project named
-CodeBrix.Texinfo - that name belongs to the repository and to the solution file
-only.
+Every public type of CodeBrix.Texinfo2Html sits in that one root namespace; the
+sub-namespaces underneath it (Sources, Lexing, Preprocessing, Parsing, Model,
+Semantics, Emit, Diagnostics) are all internal. CodeBrix.Texinfo2Pdf has no
+public types yet. There is no separate CodeBrix.Texinfo namespace and no
+project named CodeBrix.Texinfo - that name belongs to the repository and to the
+solution file only.
+
+
+CORE API REFERENCE - CodeBrix.Texinfo2Html
+--------------------------------------------------------------------------------
+
+Five public types, all in the CodeBrix.Texinfo2Html namespace.
+
+--- TexinfoHtmlRenderer ---
+
+    var renderer = new TexinfoHtmlRenderer();
+
+    TexinfoHtmlResult GenerateFromFile(string texinfoFilePath)
+    TexinfoHtmlResult Generate(string texinfoSource, string baseDirectory = null)
+    TexinfoHtmlOptions Options { get; }
+
+One renderer can be reused for many documents; set Options before calling.
+Rendering never throws over the contents of a document - anything unsupported,
+malformed or missing becomes a warning in the result plus the nearest readable
+degradation. Exceptions are reserved for the caller's own mistakes:
+ArgumentException for a blank path, FileNotFoundException for a source file
+that is not there.
+
+GenerateFromFile seeds the search paths with the source file's directory AND
+that directory's parent, in that order, which is what lets a manual written as
+a tree of @include files render from its top-level source, and what lets
+@image{pictures/foo} resolve from a sibling directory.
+
+--- TexinfoHtmlOptions ---
+
+    bool                       EmitSingleFile          (false)
+    TexinfoConditionalProfile  ConditionalProfile      (Print)
+    List<string>               IncludeSearchPaths      (empty)
+    List<string>               ImageSearchPaths        (empty)
+    Dictionary<string,string>  PredefinedValues        (empty)
+    bool                       NumberSections          (true)
+    string                     ExtraCss                ("")
+    string                     CssFileName             ("" - derived)
+
+PredefinedValues acts as though the source opened with @set name value, which
+is how to supply the version and date strings a manual's build normally
+generates into an included file. ExtraCss is appended after the built-in
+stylesheet, so a repeated rule of equal specificity wins.
+
+--- TexinfoHtmlResult ---
+
+    string Html            //the complete document
+    string BodyHtml        //the generated markup on its own
+    string Css             //always separate, even when it was embedded
+    string Title           //from @settitle
+    string BaseDirectory
+    string CssFileName
+    TexinfoRenderWarnings Warnings
+
+    string ToHtmlDocument(string replacementCss)
+    string WriteToDirectory(string directory, string baseName = null)
+
+WriteToDirectory creates the directory if needed, writes <baseName>.html, and
+writes the stylesheet beside it under CssFileName unless EmitSingleFile was
+set. It returns the full path of the HTML file.
+
+--- TexinfoRenderWarnings ---
+
+    IReadOnlyList<string> Messages
+    int Count
+
+--- TexinfoConditionalProfile ---
+
+    Print   //@iftex and every @ifnot... branch; the right one for PDF output
+    Html    //@ifhtml on, @ifnothtml off
+
+Print deliberately reads BOTH @iftex and @ifnottex, because real manuals put
+document structure - most often the @node Top and @top pair the whole document
+hangs from - in the @ifnottex branch. The cost is that a document writing the
+same visible content into both branches contributes it twice.
+
+--- The two workflows ---
+
+    //(a) straight to a PDF
+    var result = new TexinfoHtmlRenderer().GenerateFromFile("manual.texi");
+    var htmlPath = result.WriteToDirectory("out");        //manual.html + manual.css
+    new HtmlPdfRenderer().RenderFile(htmlPath, "out/manual.pdf");
+
+    //(b) restyle the intermediate first
+    var result = new TexinfoHtmlRenderer().GenerateFromFile("manual.texi");
+    var myCss = result.Css.Replace("#111111", "#000033"); //or replace wholesale
+    var html = result.ToHtmlDocument(myCss);
+    new HtmlPdfRenderer().RenderHtml(html, "out/manual.pdf", result.BaseDirectory);
+
+Image references are written into the markup as absolute paths, resolved at
+generation time, so the HTML renders from wherever it is put. That does mean
+the .html/.css pair is not portable to another machine on its own; passing
+result.BaseDirectory to Html2Pdf costs nothing and is the right habit for when
+that changes.
 
 
 REPOSITORY LAYOUT
@@ -147,10 +269,13 @@ subset. When you are unsure whether a construct is supported, check the
 Html2Pdf AGENT-README rather than guessing; markup that a browser tolerates is
 not automatically markup that Html2Pdf renders.
 
-When source files are added, organize them into sub-folders with matching
-sub-namespaces from day one - Models/, Enumerations/, Extensions/, Internal/
-and so on - and keep only the entry-point types and the library's exception type
-at the project root.
+Inside CodeBrix.Texinfo2Html the stages run in one order and each owns one
+sub-folder and matching sub-namespace: Sources -> Lexing -> Preprocessing ->
+Parsing (into Model) -> Semantics -> Emit, with Diagnostics collecting warnings
+throughout. Keep that shape. The parser records only what the source said; the
+semantic pass works out what it meant across the whole document (numbering,
+identifiers, the contents); the emitter writes markup and decides nothing about
+meaning. Only the five public entry-point types sit at the project root.
 
 
 CODING CONVENTIONS (CodeBrix family)
@@ -222,6 +347,25 @@ Test conventions:
 
   * Any call inside a test that accepts a CancellationToken must be passed
     TestContext.Current.CancellationToken, or xUnit1051 fires.
+
+Two suites need the English LilyPond documentation, which is GFDL-licensed and
+so is never committed here. They read it from ~/GitHome/lilypond/Documentation
+and skip cleanly when it is absent:
+
+  LilypondEmitterCorpusGateTests   (CodeBrix.Texinfo2Html.Tests)
+      every manual renders to markup with only the expected warnings, and
+      every table-of-contents link has a destination in the same document.
+
+  TexinfoToPdfGateTests            (CodeBrix.Texinfo2Pdf.Tests)
+      the end-to-end gate: Texinfo -> HTML/CSS -> PDF, with Html2Pdf reporting
+      nothing but font-coverage messages. This is the test that proves the two
+      libraries agree on the markup subset; nothing inside
+      CodeBrix.Texinfo2Html alone can show that. It leaves the PDFs it built in
+      <temp>/codebrix-texinfo-gate so they can be looked at afterwards.
+
+Fixtures committed to this repository must be original work written for the
+test, or come from an explicitly MIT, CC0 or public-domain source listed in
+THIRD-PARTY-NOTICES.txt. Nothing GFDL, nothing GPL.
 
 Run the whole suite from the repository root:
 

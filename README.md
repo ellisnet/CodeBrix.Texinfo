@@ -11,7 +11,11 @@ Please update your C#/.NET code and projects to the latest LTS version of Micros
 
 ## Project status
 
-This repository is currently a **scaffold**. The solution, both library projects, both test projects, the NuGet packaging metadata and the family documentation files are all in place, but neither library exposes a public API yet — the Texinfo parsing and rendering functionality is still to be written. The sections below describe what each library is intended to do.
+This repository is **under construction**, and the two libraries are at different stages.
+
+`CodeBrix.Texinfo2Html` renders Texinfo to HTML and CSS end to end and has a public API — see the sample below. Cross references render as text rather than as links, indices are collected but not yet printed, and `@lilypond` snippets are emitted as their source; those are the next pieces of work.
+
+`CodeBrix.Texinfo2Pdf` has no public API yet. Until it does, render to HTML and CSS with `CodeBrix.Texinfo2Html` and hand the result to `CodeBrix.PdfDocCreate.Html2Pdf` yourself, as the sample below shows.
 
 ## The two libraries
 
@@ -44,7 +48,34 @@ Note that the NuGet package ids carry the `.MitLicenseForever` suffix but the as
 
 ## Sample Code
 
-Sample code will be added here once the public API of each library exists.
+Render a Texinfo manual to an HTML/CSS pair, then to a PDF:
+
+```csharp
+using CodeBrix.PdfDocCreate.Html2Pdf;
+using CodeBrix.Texinfo2Html;
+
+var renderer = new TexinfoHtmlRenderer();
+var result = renderer.GenerateFromFile("manual.texi");
+
+//manual.html plus manual.css, ready to render or to edit by hand
+var htmlPath = result.WriteToDirectory("out");
+
+new HtmlPdfRenderer().RenderFile(htmlPath, "out/manual.pdf");
+
+foreach (var warning in result.Warnings.Messages) { Console.WriteLine(warning); }
+```
+
+Restyle the intermediate before it becomes a PDF:
+
+```csharp
+var result = new TexinfoHtmlRenderer().GenerateFromFile("manual.texi");
+var myCss = result.Css.Replace("#111111", "#000033");   //or replace it wholesale
+var html = result.ToHtmlDocument(myCss);
+
+new HtmlPdfRenderer().RenderHtml(html, "out/manual.pdf", result.BaseDirectory);
+```
+
+Nothing about a document's contents throws: unsupported, malformed or missing constructs degrade to the nearest readable thing and are reported in `result.Warnings`.
 
 ## License
 
