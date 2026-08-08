@@ -303,6 +303,154 @@ public class MacroExpansionTests
         document.Warnings[0].Message.Contains("cindex").Should().BeTrue();
     }
 
+    // ----- Line macros --------------------------------------------------------------------------
+
+    [Fact]
+    public void Linemacro_splits_its_arguments_at_spaces_not_commas()
+    {
+        //Arrange: the whole point of @linemacro - a comma here is ordinary text, where the same
+        //call to an @macro would have split on it.
+        string source = "@linemacro defbuiltin{name, args}\n@defline {Builtin} \\name\\ \\args\\\n"
+            + "@end linemacro\n@defbuiltin foo (bar, baz)\n";
+
+        //Act
+        string dump = Dump(source);
+
+        //Assert
+        dump.Should().Be("@defline {Builtin} foo (bar, baz)\n");
+    }
+
+    [Fact]
+    public void Linemacro_removes_the_braces_that_enclose_an_argument()
+    {
+        //Arrange
+        string source = "@linemacro deffunc{type, name}\n@deftypeline {Func} {\\type\\} \\name\\\n"
+            + "@end linemacro\n@deffunc {long int} F\n";
+
+        //Act
+        string dump = Dump(source);
+
+        //Assert
+        dump.Should().Be("@deftypeline {Func} {long int} F\n");
+    }
+
+    [Fact]
+    public void Linemacro_final_argument_takes_the_rest_of_the_line_unbraced()
+    {
+        //Arrange
+        string source = "@linemacro two{first, rest}\n[\\first\\][\\rest\\]\n@end linemacro\n"
+            + "@two a b c d\n";
+
+        //Act
+        string dump = Dump(source);
+
+        //Assert
+        dump.Should().Be("[a][b c d]\n");
+    }
+
+    [Fact]
+    public void Linemacro_empty_argument_is_written_as_empty_braces()
+    {
+        //Arrange
+        string source = "@linemacro three{a, b, c}\n[\\a\\][\\b\\][\\c\\]\n@end linemacro\n"
+            + "@three {} x {}\n";
+
+        //Act
+        string dump = Dump(source);
+
+        //Assert
+        dump.Should().Be("[][x][]\n");
+    }
+
+    [Fact]
+    public void Linemacro_argument_line_ending_in_an_at_sign_continues_onto_the_next_line()
+    {
+        //Arrange: the '@' and its newline stay INSIDE the argument, which is what makes the
+        //expansion a valid definition line - see the Texinfo manual's @deffunc example.
+        string source = "@linemacro deffunc{type, name, args}\n"
+            + "@deftypeline {Func} {\\type\\} \\name\\ \\args\\\n@end linemacro\n"
+            + "@deffunc {long int} F (int one, @\nint two)\n";
+
+        //Act
+        string dump = Dump(source);
+
+        //Assert
+        dump.Should().Be("@deftypeline {Func} {long int} F (int one, @\nint two)\n");
+    }
+
+    [Fact]
+    public void Linemacro_call_followed_by_a_brace_is_not_a_brace_form_call()
+    {
+        //Arrange: for an @macro this text would be one brace-form argument list; for a line macro
+        //the brace opens the FIRST argument and the rest of the line supplies the second.
+        string source = "@linemacro pair{one, two}\n[\\one\\][\\two\\]\n@end linemacro\n"
+            + "@pair {a b} c\n";
+
+        //Act
+        string dump = Dump(source);
+
+        //Assert
+        dump.Should().Be("[a b][c]\n");
+    }
+
+    [Fact]
+    public void Linemacro_keeps_a_braced_command_argument_whole()
+    {
+        //Arrange
+        string source = "@linemacro pair{one, two}\n[\\one\\][\\two\\]\n@end linemacro\n"
+            + "@pair @var{a b} tail\n";
+
+        //Act
+        string dump = Dump(source);
+
+        //Assert
+        dump.Should().Be("[@var{a b}][tail]\n");
+    }
+
+    [Fact]
+    public void Linemacro_missing_arguments_are_empty_and_extra_text_warns()
+    {
+        //Arrange
+        string source = "@linemacro three{a, b, c}\n[\\a\\][\\b\\][\\c\\]\n@end linemacro\n"
+            + "@three only\n";
+
+        //Act
+        PreprocessedDocument document = Process(source);
+
+        //Assert
+        document.DumpExpandedSource().Should().Be("[only][][]\n");
+        document.Warnings.Any(w => w.Message.Contains("takes 3")).Should().BeTrue();
+    }
+
+    [Fact]
+    public void Linemacro_is_removed_by_unmacro_like_any_other_macro()
+    {
+        //Arrange
+        string source = "@linemacro lm{a}\n[\\a\\]\n@end linemacro\n@lm x\n@unmacro lm\n@lm y\n";
+
+        //Act
+        PreprocessedDocument document = Process(source);
+
+        //Assert
+        document.DumpExpandedSource().Should().Be("[x]\n@lm y\n");
+        document.Macros.ContainsKey("lm").Should().BeFalse();
+    }
+
+    [Fact]
+    public void Linemacro_may_not_shadow_a_builtin_command()
+    {
+        //Arrange
+        string source = "@linemacro deffn{a}\nx\n@end linemacro\n@deffn Function real\n";
+
+        //Act
+        PreprocessedDocument document = Process(source);
+
+        //Assert
+        document.Macros.ContainsKey("deffn").Should().BeFalse();
+        document.Warnings.Count.Should().Be(1);
+        document.Warnings[0].Message.Contains("@linemacro deffn").Should().BeTrue();
+    }
+
     // ----- Recursion protection -----------------------------------------------------------------
 
     [Fact]

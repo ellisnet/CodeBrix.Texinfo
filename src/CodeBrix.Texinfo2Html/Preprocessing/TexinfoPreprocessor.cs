@@ -12,8 +12,8 @@ namespace CodeBrix.Texinfo2Html.Preprocessing;
 /// The Texinfo preprocessing engine: splices <c>@include</c> files (with search paths),
 /// maintains <c>@set</c>/<c>@clear</c> flags and substitutes <c>@value</c>, evaluates format
 /// conditionals against a <see cref="ConditionalProfile"/>, skips raw output blocks with a
-/// warning, drops comments and <c>@ignore</c> blocks, and expands <c>@macro</c>/<c>@rmacro</c>
-/// definitions (with <c>@unmacro</c> and <c>@alias</c>). Problems produce warnings, never
+/// warning, drops comments and <c>@ignore</c> blocks, and expands <c>@macro</c>/<c>@rmacro</c>/
+/// <c>@linemacro</c> definitions (with <c>@unmacro</c> and <c>@alias</c>). Problems produce warnings, never
 /// exceptions. The output is an expanded token stream ready for parsing.
 /// </summary>
 internal sealed class TexinfoPreprocessor
@@ -206,7 +206,7 @@ internal sealed class TexinfoPreprocessor
 
     private void DispatchRawBlock(TexinfoToken token)
     {
-        if (token.Value == "macro" || token.Value == "rmacro")
+        if (TexinfoLexer.IsMacroDefinitionCommand(token.Value))
         {
             DefineMacro(token);
             return;
@@ -288,6 +288,27 @@ internal sealed class TexinfoPreprocessor
         {
             HandleValue(token, frame);
             return;
+        }
+
+        //The inline conditionals are resolved here rather than in the parser for the same reason
+        //the block conditionals are: this is the only stage that knows the output profile and the
+        //flag settings as they stood at this point in the source.
+        switch (name)
+        {
+            case "inlinefmt":
+            case "inlineifformat":
+                HandleInlineFormat(token, frame, hasElseBranch: false);
+                return;
+            case "inlinefmtifelse":
+                HandleInlineFormat(token, frame, hasElseBranch: true);
+                return;
+            case "inlineraw":
+                HandleInlineRaw(token, frame);
+                return;
+            case "inlineifset":
+            case "inlineifclear":
+                HandleInlineFlag(token, frame);
+                return;
         }
 
         string resolved = ResolveAlias(name, token.Position);
@@ -589,6 +610,105 @@ internal sealed class TexinfoPreprocessor
         }
     }
 
+    // ----- Inline conditionals ---------------------------------------------------------------
+
+    /// <summary>
+    /// Handles <c>@inlinefmt{format, text}</c> and <c>@inlinefmtifelse{format, then, else}</c>.
+    /// The chosen branch is pushed back as source rather than copied to the output, so a macro
+    /// call inside it still expands.
+    /// </summary>
+    private void HandleInlineFormat(TexinfoToken token, Frame frame, bool hasElseBranch)
+    {
+        List<string> arguments = ReadInlineArguments(token, frame, hasElseBranch ? 3 : 2);
+        if (arguments == null)
+        {
+            return;
+        }
+        string format = arguments[0];
+        if (format.Length == 0)
+        {
+            _warnings.Add(TexinfoWarningCategory.Conditional, token.Position,
+                $"'@{token.Value}' names no output format; it produced nothing.");
+            return;
+        }
+        if (!FormatNames.Contains(format))
+        {
+            _warnings.Add(TexinfoWarningCategory.Conditional, token.Position,
+                $"'@{token.Value}' names the unknown output format '{format}'; it produced nothing.");
+            return;
+        }
+        bool active = EvaluateFormatConditional("if" + format);
+        string chosen = active
+            ? Argument(arguments, 1)
+            : hasElseBranch ? Argument(arguments, 2) : string.Empty;
+        if (chosen.Length > 0)
+        {
+            PushExpansionFrame($"@{token.Value}{{{format}}} at {token.Position}", chosen, token, frame);
+        }
+    }
+
+    /// <summary>
+    /// Handles <c>@inlineraw{format, text}</c>. Raw text is written for another formatter's
+    /// dialect, so it is skipped for the same reason a raw <c>@tex</c> block is: passing it
+    /// through would put markup into the output that this library never promised to produce.
+    /// </summary>
+    private void HandleInlineRaw(TexinfoToken token, Frame frame)
+    {
+        List<string> arguments = ReadInlineArguments(token, frame, 2);
+        if (arguments == null)
+        {
+            return;
+        }
+        if (Argument(arguments, 1).Length > 0)
+        {
+            _warnings.Add(TexinfoWarningCategory.RawBlockSkipped, token.Position,
+                $"Raw '@inlineraw{{{arguments[0]}}}' text skipped; its content cannot be rendered.");
+        }
+    }
+
+    /// <summary>Handles <c>@inlineifset{flag, text}</c> and <c>@inlineifclear{flag, text}</c>.</summary>
+    private void HandleInlineFlag(TexinfoToken token, Frame frame)
+    {
+        List<string> arguments = ReadInlineArguments(token, frame, 2);
+        if (arguments == null)
+        {
+            return;
+        }
+        if (arguments[0].Length == 0)
+        {
+            _warnings.Add(TexinfoWarningCategory.Conditional, token.Position,
+                $"'@{token.Value}' has no flag name; it produced nothing.");
+            return;
+        }
+        bool isSet = _values.ContainsKey(arguments[0]);
+        bool active = token.Value == "inlineifset" ? isSet : !isSet;
+        string text = Argument(arguments, 1);
+        if (active && text.Length > 0)
+        {
+            PushExpansionFrame($"@{token.Value}{{{arguments[0]}}} at {token.Position}", text, token, frame);
+        }
+    }
+
+    /// <summary>
+    /// Reads the braced, comma-separated argument list of an inline conditional, or returns null
+    /// when the command is not followed by one.
+    /// </summary>
+    private List<string> ReadInlineArguments(TexinfoToken token, Frame frame, int count)
+    {
+        if (frame.Index >= frame.Tokens.Count
+            || frame.Tokens[frame.Index].Kind != TexinfoTokenKind.OpenBrace)
+        {
+            _warnings.Add(TexinfoWarningCategory.Conditional, token.Position,
+                $"'@{token.Value}' is not followed by a brace group; it produced nothing.");
+            return null;
+        }
+        frame.Index++;
+        return MacroArgumentParser.SplitCommandArguments(CollectBraceGroupText(token, frame), count);
+    }
+
+    private static string Argument(List<string> arguments, int index)
+        => index < arguments.Count ? arguments[index] : string.Empty;
+
     private void SkipConditionalBlock(TexinfoToken token, Frame frame)
     {
         int depth = 0;
@@ -671,7 +791,7 @@ internal sealed class TexinfoPreprocessor
         if (KnownTexinfoCommands.Contains(name))
         {
             _warnings.Add(TexinfoWarningCategory.Macro, token.Position,
-                $"'@macro {name}' would redefine the built-in '@{name}'; keeping the built-in.");
+                $"'@{token.Value} {name}' would redefine the built-in '@{name}'; keeping the built-in.");
             return;
         }
 
@@ -683,7 +803,7 @@ internal sealed class TexinfoPreprocessor
             if (close < 0)
             {
                 _warnings.Add(TexinfoWarningCategory.Macro, token.Position,
-                    $"'@macro {name}' parameter list is missing its closing '}}'.");
+                    $"'@{token.Value} {name}' parameter list is missing its closing '}}'.");
                 close = afterName.Length;
             }
             string parameterList = afterName.Substring(1, Math.Max(0, close - 1));
@@ -699,7 +819,7 @@ internal sealed class TexinfoPreprocessor
         else if (afterName.Length > 0)
         {
             _warnings.Add(TexinfoWarningCategory.Macro, token.Position,
-                $"Unexpected text after '@macro {name}'; it was ignored.");
+                $"Unexpected text after '@{token.Value} {name}'; it was ignored.");
         }
 
         string body = token.RawContent;
@@ -708,7 +828,7 @@ internal sealed class TexinfoPreprocessor
             body = body.Substring(0, body.Length - 1);
         }
         _macros[name] = new MacroDefinition(name, parameters, body,
-            token.Value == "rmacro", token.Position);
+            token.Value == "rmacro", token.Value == "linemacro", token.Position);
     }
 
     private static bool IsCommandNameChar(char c, bool first)
@@ -720,7 +840,16 @@ internal sealed class TexinfoPreprocessor
         bool lineForm = false;
 
         TexinfoToken next = frame.Index < frame.Tokens.Count ? frame.Tokens[frame.Index] : null;
-        if (next != null && next.Kind == TexinfoTokenKind.OpenBrace)
+        if (macro.IsLineMacro)
+        {
+            //A line macro is ALWAYS called as a line command, so a following brace opens one
+            //braced argument rather than a brace-form argument list, and the arguments are
+            //separated by spaces rather than commas.
+            arguments = MacroArgumentParser.SplitLineMacroArguments(
+                ConsumeRestOfLine(frame), macro.Parameters.Count);
+            lineForm = true;
+        }
+        else if (next != null && next.Kind == TexinfoTokenKind.OpenBrace)
         {
             frame.Index++;
             string argumentText = CollectBraceGroupText(token, frame);

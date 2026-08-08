@@ -332,10 +332,36 @@ public class TexinfoParserTests
     public void Parse_files_ftable_terms_in_the_function_index()
     {
         //Arrange + Act
-        TexinfoDocument document = Parse("@ftable @code\n@item one\n@end ftable\n");
+        TexinfoDocument document = Parse("@ftable @code\n@item one\n@item two\n@end ftable\n");
+
+        //Assert - the index entry is the only thing that makes @ftable more than @table, so the
+        //table's index name and an entry per term are two halves of the same claim.
+        Node<TableNode>(document.Preamble[0]).IndexName.Should().Be("fn");
+        document.IndexEntries.Count.Should().Be(2);
+        document.IndexEntries[0].IndexName.Should().Be("fn");
+        InlineNodes.ToPlainText(document.IndexEntries[0].Content).Should().Be("one");
+        InlineNodes.ToPlainText(document.IndexEntries[1].Content).Should().Be("two");
+    }
+
+    [Fact]
+    public void Parse_files_vtable_terms_in_the_variable_index()
+    {
+        //Arrange + Act
+        TexinfoDocument document = Parse("@vtable @code\n@item alpha\n@end vtable\n");
 
         //Assert
-        Node<TableNode>(document.Preamble[0]).IndexName.Should().Be("fn");
+        document.IndexEntries.Count.Should().Be(1);
+        document.IndexEntries[0].IndexName.Should().Be("vr");
+    }
+
+    [Fact]
+    public void Parse_files_no_index_entries_for_a_plain_table()
+    {
+        //Arrange + Act
+        TexinfoDocument document = Parse("@table @code\n@item one\n@end table\n");
+
+        //Assert
+        document.IndexEntries.Count.Should().Be(0);
     }
 
     [Fact]
@@ -592,14 +618,29 @@ public class TexinfoParserTests
     [Fact]
     public void Parse_keeps_an_unsupported_environment_as_a_plain_block()
     {
-        //Arrange + Act
-        TexinfoDocument document = Parse("@deffn Command foo\nWhat it does.\n@end deffn\n");
+        //Arrange + Act - an environment nothing implements, recognized as one purely because a
+        //matching '@end' follows it.
+        TexinfoDocument document = Parse("@sidebar Aside\nWhat it says.\n@end sidebar\n");
 
         //Assert
         CountOf(document, TexinfoWarningCategory.UnknownCommand).Should().Be(1);
         BlockEnvironmentNode block = Node<BlockEnvironmentNode>(document.Preamble[0]);
         block.Kind.Should().Be(TexinfoBlockKind.Unknown);
-        InlineNodes.ToPlainText(block.Blocks).Should().Be("What it does.");
+        InlineNodes.ToPlainText(block.Blocks).Should().Be("What it says.");
+    }
+
+    [Fact]
+    public void Parse_treats_an_unknown_command_with_no_matching_end_as_inline()
+    {
+        //Arrange + Act - the same name without an '@end' is not an environment, and swallowing the
+        //rest of the document looking for one would be far worse than losing the command.
+        TexinfoDocument document = Parse("@sidebar\nOrdinary text.\n\nA second paragraph.\n");
+
+        //Assert
+        CountOf(document, TexinfoWarningCategory.UnknownCommand).Should().Be(1);
+        document.Preamble.Count.Should().Be(2);
+        InlineNodes.ToPlainText(Node<ParagraphNode>(document.Preamble[1]).Content)
+            .Should().Be("A second paragraph.");
     }
 
     [Fact]

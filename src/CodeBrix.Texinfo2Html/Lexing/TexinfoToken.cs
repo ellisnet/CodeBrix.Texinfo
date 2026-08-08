@@ -43,7 +43,8 @@ internal sealed class TexinfoToken
     /// <summary>
     /// For <see cref="TexinfoTokenKind.RawBlock"/>: the unparsed text that followed the command
     /// name on its opening line - the <c>[options]</c> of a lilypond block, or the name and
-    /// parameter list of a macro definition. Empty for other kinds.
+    /// parameter list of a macro definition, or the single delimiter character of a <c>@verb</c>.
+    /// Empty for other kinds.
     /// </summary>
     public string RawArgument { get; init; } = string.Empty;
 
@@ -89,6 +90,12 @@ internal sealed class TexinfoToken
             case TexinfoTokenKind.Comment:
                 return "@" + CommentCommand + Value + (IsWholeLineComment ? "\n" : string.Empty);
             case TexinfoTokenKind.RawBlock:
+                if (Value == "verb")
+                {
+                    //The delimiter is what @verb wrote around its text, and putting it back is
+                    //what makes the reconstruction read the same way round.
+                    return "@verb{" + RawArgument + RawContent + RawArgument + "}";
+                }
                 if (IsBraceRawBlock)
                 {
                     return "@" + Value + RawArgument + "{" + RawContent + "}";

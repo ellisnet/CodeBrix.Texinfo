@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using CodeBrix.Texinfo2Html.Emit;
@@ -15,17 +16,19 @@ public sealed class TexinfoHtmlResult
 {
     private readonly bool _selfContained;
 
-    internal TexinfoHtmlResult(string bodyHtml, string css, string title, string baseDirectory,
-        string cssFileName, string defaultBaseName, bool selfContained,
-        TexinfoRenderWarnings warnings)
+    internal TexinfoHtmlResult(string bodyHtml, string css, string title, string author,
+        string baseDirectory, string cssFileName, string defaultBaseName, bool selfContained,
+        IReadOnlyList<TexinfoImageReference> images, TexinfoRenderWarnings warnings)
     {
         BodyHtml = bodyHtml ?? string.Empty;
         Css = css ?? string.Empty;
         Title = title ?? string.Empty;
+        Author = author ?? string.Empty;
         BaseDirectory = baseDirectory ?? string.Empty;
         CssFileName = cssFileName ?? string.Empty;
         DefaultBaseName = defaultBaseName ?? "index";
         _selfContained = selfContained;
+        Images = images ?? new List<TexinfoImageReference>();
         Warnings = warnings;
         Html = selfContained
             ? HtmlDocumentBuilder.BuildSelfContained(BodyHtml, Css, Title)
@@ -51,6 +54,13 @@ public sealed class TexinfoHtmlResult
     public string Title { get; }
 
     /// <summary>
+    /// The author from the title page's first <c>@author</c>, or an empty string when the document
+    /// named none. This is what fills the author field of a PDF's metadata; a title page naming
+    /// several authors still prints them all, but only the first is reported here.
+    /// </summary>
+    public string Author { get; }
+
+    /// <summary>
     /// The directory the source was read from, which is what relative references in the markup
     /// resolve against.
     /// </summary>
@@ -58,6 +68,14 @@ public sealed class TexinfoHtmlResult
 
     /// <summary>The file name the stylesheet is written under and the markup links to.</summary>
     public string CssFileName { get; }
+
+    /// <summary>
+    /// Every picture the markup refers to, and where each was found. The markup points at them
+    /// relative to the directory the document is written into, so they have to travel with it;
+    /// <see cref="WriteToDirectory"/> takes them along, and <see cref="CopyImagesTo"/> is how to do
+    /// the same for a document that is rendered from memory.
+    /// </summary>
+    public IReadOnlyList<TexinfoImageReference> Images { get; }
 
     /// <summary>Everything that could not be rendered exactly as the source asked.</summary>
     public TexinfoRenderWarnings Warnings { get; }
@@ -75,9 +93,48 @@ public sealed class TexinfoHtmlResult
         => HtmlDocumentBuilder.BuildSelfContained(BodyHtml, replacementCss ?? string.Empty, Title);
 
     /// <summary>
+    /// Puts every picture the markup refers to into a directory, under the relative paths the markup
+    /// uses, creating the folders it needs. Pictures found on disk are copied; ones a snippet
+    /// renderer handed over as bytes are written. A document with no pictures creates nothing.
+    /// </summary>
+    /// <param name="directory">The directory the document is, or will be, written into.</param>
+    /// <returns>The number of files written.</returns>
+    public int CopyImagesTo(string directory)
+    {
+        if (string.IsNullOrWhiteSpace(directory))
+        {
+            throw new ArgumentException("Value cannot be null or blank.", nameof(directory));
+        }
+        string fullDirectory = Path.GetFullPath(directory);
+        int copied = 0;
+        foreach (TexinfoImageReference image in Images)
+        {
+            string destination = Path.GetFullPath(Path.Combine(fullDirectory,
+                image.RelativePath.Replace('/', Path.DirectorySeparatorChar)));
+            if (image.HasContent)
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(destination));
+                File.WriteAllBytes(destination, image.ContentDirect);
+                copied++;
+                continue;
+            }
+            if (string.Equals(destination, image.SourcePath, StringComparison.Ordinal)
+                || !File.Exists(image.SourcePath))
+            {
+                continue;
+            }
+            Directory.CreateDirectory(Path.GetDirectoryName(destination));
+            File.Copy(image.SourcePath, destination, overwrite: true);
+            copied++;
+        }
+        return copied;
+    }
+
+    /// <summary>
     /// Writes the document to a directory, creating it if it does not exist. Unless the options
     /// asked for a single file, the stylesheet is written beside the markup under
-    /// <see cref="CssFileName"/>, which is the name the markup links to.
+    /// <see cref="CssFileName"/>, which is the name the markup links to. Every picture the markup
+    /// refers to is copied along with it, so what lands in the directory is the whole document.
     /// </summary>
     /// <param name="directory">The directory to write into.</param>
     /// <param name="baseName">
@@ -101,6 +158,7 @@ public sealed class TexinfoHtmlResult
         {
             File.WriteAllText(Path.Combine(fullDirectory, CssFileName), Css, encoding);
         }
+        CopyImagesTo(fullDirectory);
         return htmlPath;
     }
 }

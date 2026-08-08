@@ -43,7 +43,9 @@ internal static class KnownTexinfoCommands
         "guillemetright", "guillemotleft", "guillemotright", "quotesinglbase", "quotedblbase",
         "exclamdown", "questiondown", "aa", "AA", "ae", "AE", "o", "O", "oe", "OE", "ss",
         "l", "L", "ordf", "ordm", "dotaccent", "ringaccent", "tieaccent", "u", "ubaraccent",
-        "udotaccent", "v", "H", "dotless", "today",
+        "udotaccent", "v", "H", "dotless", "today", "ogonek", "dh", "DH", "th", "TH",
+        "guilsinglleft", "guilsinglright", "hashchar", "ampchar", "atchar", "lbracechar",
+        "rbracechar", "backslashchar",
         // Cross references and indices
         "ref", "xref", "pxref", "anchor", "xrefautomaticsectiontitle", "cindex", "findex",
         "vindex", "kindex", "pindex", "tindex", "printindex", "syncodeindex", "synindex",
@@ -54,7 +56,7 @@ internal static class KnownTexinfoCommands
         "ifnotlatex", "ifset", "ifclear", "ifcommanddefined", "ifcommandnotdefined",
         "set", "clear", "value", "tex", "html", "xml", "docbook", "latex",
         // Macro machinery
-        "macro", "rmacro", "unmacro", "alias", "definfoenclose",
+        "macro", "rmacro", "linemacro", "unmacro", "alias", "definfoenclose",
         // Definition commands
         "deffn", "deffnx", "defun", "defunx", "defmac", "defmacx", "defspec", "defspecx",
         "defvr", "defvrx", "defvar", "defvarx", "defopt", "defoptx", "deftypefn", "deftypefnx",
@@ -62,9 +64,11 @@ internal static class KnownTexinfoCommands
         "deftp", "deftpx", "defcv", "defcvx", "defivar", "defivarx", "defop", "defopx",
         "defmethod", "defmethodx", "deftypecv", "deftypecvx", "deftypeivar", "deftypeivarx",
         "deftypeop", "deftypeopx", "deftypemethod", "deftypemethodx",
+        "defblock", "defline", "deftypeline",
         // Document control
         "include", "settitle", "setfilename", "documentencoding", "documentlanguage",
-        "documentdescription", "contents", "shortcontents", "summarycontents", "image",
+        "documentdescription", "nodedescription", "nodedescriptionblock", "displaymath",
+        "contents", "shortcontents", "summarycontents", "image",
         "sp", "page", "need", "noindent", "indent", "afourpaper", "afivepaper", "afourlatex",
         "afourwide", "smallbook", "pagesizes", "finalout", "allowcodebreaks", "hyphenation",
         "setcodequotes", "codequoteundirected", "codequotebacktick", "frenchspacing",

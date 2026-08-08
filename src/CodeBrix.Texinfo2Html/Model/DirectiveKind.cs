@@ -19,6 +19,9 @@ internal enum DirectiveKind
     /// <summary><c>@printindex</c> - print the named index here.</summary>
     PrintIndex,
 
+    /// <summary><c>@listoffloats</c> - print a list of the floats of the named type here.</summary>
+    ListOfFloats,
+
     /// <summary><c>@page</c> - start a new page.</summary>
     PageBreak,
 

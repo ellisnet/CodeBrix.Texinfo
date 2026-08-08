@@ -29,11 +29,32 @@ internal sealed class TableTermNode : TexinfoNode
     /// <summary>True when the term came from <c>@itemx</c> rather than <c>@item</c>.</summary>
     public bool IsContinuation { get; }
 
+    /// <summary>
+    /// The index entry an <c>@ftable</c> or <c>@vtable</c> files for this term, or null for a
+    /// plain <c>@table</c>, which files none. It is one of the <see cref="ChildNodes"/> so that
+    /// every entry the document collects is reachable from the tree, even though its content is
+    /// the same node instances as <see cref="Content"/>.
+    /// </summary>
+    public IndexEntryNode IndexEntry { get; set; }
+
     /// <inheritdoc/>
     public override TexinfoNodePlacement Placement => TexinfoNodePlacement.Block;
 
     /// <inheritdoc/>
-    public override IEnumerable<TexinfoNode> ChildNodes => Content;
+    public override IEnumerable<TexinfoNode> ChildNodes
+    {
+        get
+        {
+            foreach (TexinfoNode node in Content)
+            {
+                yield return node;
+            }
+            if (IndexEntry != null)
+            {
+                yield return IndexEntry;
+            }
+        }
+    }
 
     /// <summary>Formats the node for diagnostics.</summary>
     public override string ToString() => IsContinuation ? "@itemx term" : "@item term";

@@ -111,7 +111,7 @@ internal static class TexinfoCommandTable
             { "print", "⊣" },
             { "error", "error→" },
             { "equiv", "≡" },
-            { "point", "∗" },
+            { "point", "⋆" },
             { "euro", "€" },
             { "pounds", "£" },
             { "textdegree", "°" },
@@ -131,6 +131,8 @@ internal static class TexinfoCommandTable
             { "guillemetright", "»" },
             { "guillemotleft", "«" },
             { "guillemotright", "»" },
+            { "guilsinglleft", "‹" },
+            { "guilsinglright", "›" },
             { "exclamdown", "¡" },
             { "questiondown", "¿" },
             { "aa", "å" },
@@ -144,8 +146,19 @@ internal static class TexinfoCommandTable
             { "ss", "ß" },
             { "l", "ł" },
             { "L", "Ł" },
+            { "dh", "ð" },
+            { "DH", "Ð" },
+            { "th", "þ" },
+            { "TH", "Þ" },
             { "ordf", "ª" },
-            { "ordm", "º" }
+            { "ordm", "º" },
+            //The commands that name a character the Texinfo syntax has taken for itself.
+            { "hashchar", "#" },
+            { "ampchar", "&" },
+            { "atchar", "@" },
+            { "lbracechar", "{" },
+            { "rbracechar", "}" },
+            { "backslashchar", "\\" }
         };
 
     private static readonly Dictionary<string, (TexinfoBlockKind Kind, bool Preformatted)> BlockEnvironments =
@@ -169,21 +182,43 @@ internal static class TexinfoCommandTable
             { "flushleft", (TexinfoBlockKind.FlushLeft, false) },
             { "flushright", (TexinfoBlockKind.FlushRight, false) },
             { "titlepage", (TexinfoBlockKind.TitlePage, false) },
-            { "documentdescription", (TexinfoBlockKind.DocumentDescription, false) }
+            { "documentdescription", (TexinfoBlockKind.DocumentDescription, false) },
+            { "displaymath", (TexinfoBlockKind.DisplayMath, true) }
         };
 
     /// <summary>
-    /// Block environments that are recognized as blocks - so their <c>@end</c> lines up and their
-    /// content survives - but whose particular meaning is not implemented yet. Each occurrence
-    /// warns once and renders as a plain block.
+    /// The accent commands, and the combining mark each one stands for. Composing a base letter
+    /// with its mark and normalizing produces the precomposed character where Unicode has one,
+    /// which is what a font is most likely to carry a glyph for.
     /// </summary>
-    private static readonly HashSet<string> GenericBlockEnvironments =
-        new HashSet<string>(StringComparer.Ordinal)
+    /// <remarks>
+    /// <c>@dotless</c> is deliberately absent: it removes a mark rather than adding one, and is
+    /// handled by <see cref="TryGetDotless"/>.
+    /// </remarks>
+    private static readonly Dictionary<string, string> Accents =
+        new Dictionary<string, string>(StringComparer.Ordinal)
         {
-            "float", "deffn", "defun", "defmac", "defspec", "defvr", "defvar", "defopt",
-            "deftypefn", "deftypefun", "deftypevr", "deftypevar", "deftp", "defcv", "defivar",
-            "defop", "defmethod", "deftypecv", "deftypeivar", "deftypeop", "deftypemethod"
+            { "'", "́" },          //acute
+            { "`", "̀" },          //grave
+            { "^", "̂" },          //circumflex
+            { "\"", "̈" },         //umlaut
+            { "~", "̃" },          //tilde
+            { ",", "̧" },          //cedilla
+            { "=", "̄" },          //macron
+            { "dotaccent", "̇" },  //overdot
+            { "ringaccent", "̊" }, //ring
+            { "tieaccent", "͡" },  //tie over the following character
+            { "u", "̆" },          //breve
+            { "ogonek", "̨" },     //ogonek
+            { "ubaraccent", "̲" }, //underbar
+            { "udotaccent", "̣" }, //underdot
+            { "v", "̌" },          //hacek
+            { "H", "̋" }           //long Hungarian umlaut
         };
+
+    /// <summary>The letters <c>@dotless</c> knows how to strip the dot from.</summary>
+    private static readonly Dictionary<string, string> DotlessLetters =
+        new Dictionary<string, string>(StringComparer.Ordinal) { { "i", "ı" }, { "j", "ȷ" } };
 
     /// <summary>
     /// Commands whose whole line is a setting to be recorded and otherwise ignored. Their
@@ -193,6 +228,8 @@ internal static class TexinfoCommandTable
     private static readonly HashSet<string> RecordedSettings =
         new HashSet<string>(StringComparer.Ordinal)
         {
+            //@nodedescription describes a node for the menus a printed document does not have.
+            "nodedescription",
             "setfilename", "novalidate", "setchapternewpage", "paragraphindent",
             "firstparagraphindent", "exampleindent", "headings", "everyheading", "evenheading",
             "oddheading", "everyfooting", "evenfooting", "oddfooting", "finalout",
@@ -200,8 +237,7 @@ internal static class TexinfoCommandTable
             "frenchspacing", "kbdinputstyle", "footnotestyle", "urefbreakstyle",
             "xrefautomaticsectiontitle", "fonttextsize", "deftypefnnewline", "microtype",
             "afourpaper", "afivepaper", "afourlatex", "afourwide", "smallbook", "pagesizes",
-            "raisesections", "lowersections", "definfoenclose", "defindex", "defcodeindex",
-            "shorttitlepage", "clickstyle", "setcontentsaftertitlepage",
+            "definfoenclose", "clickstyle", "setcontentsaftertitlepage",
             "setshortcontentsaftertitlepage"
         };
 
@@ -281,9 +317,25 @@ internal static class TexinfoCommandTable
         return false;
     }
 
-    /// <summary>True for block environments that are parsed as blocks but not yet implemented.</summary>
+    /// <summary>Looks up the combining mark an accent command stands for.</summary>
     /// <param name="name">A command name without <c>@</c>.</param>
-    public static bool IsGenericBlockEnvironment(string name) => GenericBlockEnvironments.Contains(name);
+    /// <param name="mark">Receives the combining mark.</param>
+    public static bool TryGetAccent(string name, out string mark) => Accents.TryGetValue(name, out mark);
+
+    /// <summary>Looks up the undotted form of a letter for <c>@dotless</c>.</summary>
+    /// <param name="letter">The letter as written inside the command's braces.</param>
+    /// <param name="dotless">Receives the undotted letter.</param>
+    public static bool TryGetDotless(string letter, out string dotless)
+        => DotlessLetters.TryGetValue(letter, out dotless);
+
+    /// <summary>
+    /// True when the command's argument is a single following character rather than a braced
+    /// group. Texinfo lets the punctuation accents be written either way - <c>@'e</c> and
+    /// <c>@'{e}</c> are the same thing - while the alphabetic ones need the braces, or at least a
+    /// space, to keep the argument from being read as more of the command name.
+    /// </summary>
+    /// <param name="name">A command name without <c>@</c>.</param>
+    public static bool IsAlphabeticAccent(string name) => name.Length > 0 && char.IsLetter(name[0]);
 
     /// <summary>True when the command's whole line is a setting to record and otherwise ignore.</summary>
     /// <param name="name">A command name without <c>@</c>.</param>

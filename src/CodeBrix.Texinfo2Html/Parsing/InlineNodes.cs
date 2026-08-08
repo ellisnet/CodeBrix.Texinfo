@@ -28,6 +28,41 @@ internal static class InlineNodes
         return builder.ToString();
     }
 
+    /// <summary>
+    /// Flattens nodes to the name they stand for: their plain text with every run of whitespace
+    /// collapsed to a single space. Texinfo names are written inside braces and may be broken
+    /// across lines wherever the paragraph needs it, so the same destination is routinely spelled
+    /// with a newline in the reference and a space in the definition.
+    /// </summary>
+    /// <param name="nodes">The nodes to flatten.</param>
+    public static string ToName(IReadOnlyList<TexinfoNode> nodes)
+    {
+        string text = ToPlainText(nodes);
+        StringBuilder builder = new StringBuilder(text.Length);
+        bool pendingSpace = false;
+        foreach (char c in text)
+        {
+            if (char.IsWhiteSpace(c))
+            {
+                pendingSpace = builder.Length > 0;
+                continue;
+            }
+            if (pendingSpace)
+            {
+                builder.Append(' ');
+                pendingSpace = false;
+            }
+            builder.Append(c);
+        }
+        return builder.ToString();
+    }
+
+    /// <summary>Returns one part of a split argument as a name, flattened and whitespace-collapsed.</summary>
+    /// <param name="parts">The parts returned by <see cref="SplitOnCommas"/>.</param>
+    /// <param name="index">Which part to read.</param>
+    public static string PartName(List<List<TexinfoNode>> parts, int index)
+        => index < parts.Count ? ToName(parts[index]) : string.Empty;
+
     private static void Append(StringBuilder builder, IEnumerable<TexinfoNode> nodes)
     {
         foreach (TexinfoNode node in nodes)

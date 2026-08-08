@@ -6,6 +6,7 @@ using CodeBrix.Texinfo2Html.Model;
 using CodeBrix.Texinfo2Html.Parsing;
 using CodeBrix.Texinfo2Html.Preprocessing;
 using CodeBrix.Texinfo2Html.Semantics;
+using CodeBrix.Texinfo2Html.Snippets;
 using CodeBrix.Texinfo2Html.Sources;
 
 namespace CodeBrix.Texinfo2Html;
@@ -91,8 +92,11 @@ public sealed class TexinfoHtmlRenderer
     {
         TexinfoDocument document = new TexinfoParser(preprocessed).Parse();
         DocumentSemantics semantics = DocumentSemantics.Analyze(document, Options.NumberSections);
-        ImageReferenceResolver images = new ImageReferenceResolver(BuildImageSearchPaths(baseDirectory));
-        string bodyHtml = new HtmlEmitter(document, semantics, images).EmitBody();
+        ImageReferenceResolver images = new ImageReferenceResolver(BuildImageSearchPaths(baseDirectory),
+            ResolveImageFolderName(sourceBaseName));
+        SnippetRenderCoordinator snippets = new SnippetRenderCoordinator(Options.SnippetRenderer,
+            BuildFileSearchPaths(baseDirectory), baseDirectory, images, document.Warnings);
+        string bodyHtml = new HtmlEmitter(document, semantics, images, snippets).EmitBody();
 
         string css = DefaultStylesheet.Css;
         if (!string.IsNullOrWhiteSpace(Options.ExtraCss))
@@ -103,10 +107,12 @@ public sealed class TexinfoHtmlRenderer
             bodyHtml,
             css,
             document.Title,
+            document.Author,
             baseDirectory,
             ResolveCssFileName(sourceBaseName),
             sourceBaseName,
             Options.EmitSingleFile,
+            images.Images,
             //Warnings are snapshotted last: the emitter adds to the same collection the lexer,
             //preprocessor and parser filled, so the whole run is in one list by this point.
             new TexinfoRenderWarnings(document.Warnings));
@@ -121,11 +127,24 @@ public sealed class TexinfoHtmlRenderer
         return string.IsNullOrWhiteSpace(sourceBaseName) ? "texinfo.css" : sourceBaseName + ".css";
     }
 
-    private List<string> BuildImageSearchPaths(string baseDirectory)
+    private string ResolveImageFolderName(string sourceBaseName)
     {
-        //@image references are written relative to wherever the manual keeps its pictures, which is
-        //usually a sibling of the source directory rather than the source directory itself - hence
-        //the parent, matching where @include already looks.
+        if (!string.IsNullOrWhiteSpace(Options.ImageFolderName))
+        {
+            return Options.ImageFolderName.Trim();
+        }
+        //Naming the folder after the document keeps two manuals written into one directory from
+        //arguing over a picture they both call 'logo.png'.
+        return string.IsNullOrWhiteSpace(sourceBaseName)
+            ? "texinfo-images"
+            : sourceBaseName + "-images";
+    }
+
+    private List<string> BuildFileSearchPaths(string baseDirectory)
+    {
+        //References to companion files are written relative to wherever the manual keeps them,
+        //which is usually a sibling of the source directory rather than the source directory
+        //itself - hence the parent, matching where @include already looks.
         List<string> paths = new List<string>();
         if (!string.IsNullOrWhiteSpace(baseDirectory))
         {
@@ -144,6 +163,12 @@ public sealed class TexinfoHtmlRenderer
                 paths.Add(path);
             }
         }
+        return paths;
+    }
+
+    private List<string> BuildImageSearchPaths(string baseDirectory)
+    {
+        List<string> paths = BuildFileSearchPaths(baseDirectory);
         foreach (string path in Options.ImageSearchPaths)
         {
             if (!string.IsNullOrWhiteSpace(path))

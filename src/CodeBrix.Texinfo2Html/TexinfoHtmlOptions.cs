@@ -63,4 +63,20 @@ public sealed class TexinfoHtmlOptions
     /// document rendered from a string.
     /// </summary>
     public string CssFileName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The folder the document's pictures are gathered into beside the markup, and the folder the
+    /// <c>src</c> of every image points into. When left empty it is derived from the source file's
+    /// name, or is <c>texinfo-images</c> for a document rendered from a string. A document with no
+    /// pictures never creates it.
+    /// </summary>
+    public string ImageFolderName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Engraves the LilyPond music environments of a <c>.tely</c> document into pictures. Left null,
+    /// the default, every snippet is shown as its source text instead and one warning records how
+    /// many there were - which is all this library can do on its own, since engraving music means
+    /// running LilyPond.
+    /// </summary>
+    public ILilypondSnippetRenderer SnippetRenderer { get; set; }
 }

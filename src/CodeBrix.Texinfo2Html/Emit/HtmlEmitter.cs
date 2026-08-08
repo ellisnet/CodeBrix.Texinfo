@@ -1,9 +1,12 @@
+using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Text;
 using CodeBrix.Texinfo2Html.Diagnostics;
 using CodeBrix.Texinfo2Html.Model;
 using CodeBrix.Texinfo2Html.Parsing;
 using CodeBrix.Texinfo2Html.Semantics;
+using CodeBrix.Texinfo2Html.Snippets;
 using CodeBrix.Texinfo2Html.Sources;
 
 namespace CodeBrix.Texinfo2Html.Emit;
@@ -20,27 +23,42 @@ namespace CodeBrix.Texinfo2Html.Emit;
 /// </remarks>
 internal sealed class HtmlEmitter
 {
+    /// <summary>
+    /// One step of indentation for a preformatted environment written inside another one. Five
+    /// spaces is the step Texinfo's own printed output uses between such levels, and inside a
+    /// preformatted element spaces are the only unit that means anything.
+    /// </summary>
+    private const string NestedPreformattedIndent = "     ";
+
     private readonly TexinfoDocument _document;
     private readonly DocumentSemantics _semantics;
     private readonly ImageReferenceResolver _images;
+    private readonly SnippetRenderCoordinator _snippets;
     private readonly TexinfoWarningCollection _warnings;
     private readonly HtmlWriter _writer = new HtmlWriter();
-    private int _musicSnippetCount;
-    private SourcePosition _firstMusicSnippet;
     private bool _warnedAboutMath;
-    private bool _warnedAboutIndex;
     private bool _titlePageEmitted;
+    private int _literalDepth;
+    private int _noBreakDepth;
+    private int _repeatedDepth;
+    private int _nestedPreformattedDepth;
+    private bool _nestedIndentPending;
+    private int _unresolvedReferenceCount;
+    private string _firstUnresolvedReference = string.Empty;
+    private SourcePosition _firstUnresolvedPosition;
 
     /// <summary>Creates an emitter for one analyzed document.</summary>
     /// <param name="document">The parsed document.</param>
     /// <param name="semantics">The results of the semantic passes over that document.</param>
     /// <param name="images">Resolver used to turn image references into paths on disk.</param>
+    /// <param name="snippets">Coordinator that engraves the document's music environments.</param>
     public HtmlEmitter(TexinfoDocument document, DocumentSemantics semantics,
-        ImageReferenceResolver images)
+        ImageReferenceResolver images, SnippetRenderCoordinator snippets)
     {
         _document = document;
         _semantics = semantics;
         _images = images;
+        _snippets = snippets;
         _warnings = document.Warnings;
     }
 
@@ -60,8 +78,9 @@ internal sealed class HtmlEmitter
         {
             EmitSection(section);
         }
-        EmitFootnotes();
-        ReportMusicSnippets();
+        EmitFootnoteList(_semantics.TrailingFootnotes);
+        _snippets.ReportTotals();
+        ReportUnresolvedReferences();
         return _writer.ToString();
     }
 
@@ -73,6 +92,7 @@ internal sealed class HtmlEmitter
             .ToString(CultureInfo.InvariantCulture);
         _writer.BeginBlock(tag);
         _writer.Attribute("id", section.ElementId);
+        _writer.Attribute("class", StartsOnANewPage(section) ? "texinfo-chapter" : null);
         _writer.CloseStartTag();
         if (section.Number.Length > 0)
         {
@@ -91,6 +111,25 @@ internal sealed class HtmlEmitter
         {
             EmitSection(child);
         }
+        //A printed manual prints its notes at the end of the chapter they belong to, which is only
+        //knowable once the chapter's last subsection has been written out.
+        EmitFootnoteList(_semantics.FootnotesFor(section));
+    }
+
+    /// <summary>
+    /// True when a sectioning unit begins a fresh page. In a printed manual a chapter does, which
+    /// is Texinfo's own default; <c>@setchapternewpage off</c> is how a document asks for the
+    /// running text a screen reader gets instead. <c>@top</c> is excluded because it names the
+    /// document rather than opening a chapter of it.
+    /// </summary>
+    private bool StartsOnANewPage(SectionNode section)
+    {
+        if (section.Kind == SectionKind.Top || section.Level > 1)
+        {
+            return false;
+        }
+        return !(_document.Settings.TryGetValue("setchapternewpage", out string setting)
+                 && setting.Trim().Equals("off", StringComparison.OrdinalIgnoreCase));
     }
 
     // ----- blocks ----------------------------------------------------------------------------
@@ -134,6 +173,12 @@ internal sealed class HtmlEmitter
             case MultitableNode multitable:
                 EmitMultitable(multitable);
                 return;
+            case DefinitionNode definition:
+                EmitDefinition(definition);
+                return;
+            case FloatNode floatNode:
+                EmitFloat(floatNode);
+                return;
             case DirectiveNode directive:
                 EmitDirective(directive);
                 return;
@@ -152,10 +197,12 @@ internal sealed class HtmlEmitter
             case UnknownCommandNode unknown:
                 EmitContainer("div", "texinfo-unknown", unknown.Content);
                 return;
+            case IndexEntryNode entry:
+                //An index entry is not content: it marks the place the printed index links back to.
+                EmitAnchorBlock(_semantics.IndexEntryIdFor(entry));
+                return;
             case MenuNode:
-            case IndexEntryNode:
-                //Menus are navigation for the Info reader, and index entries are markers that the
-                //index itself renders; neither is content in a printed document.
+                //Menus are navigation for the Info reader, not content in a printed document.
                 return;
             default:
                 //Anything else the parser can produce is inline content that ended up in a block
@@ -167,9 +214,19 @@ internal sealed class HtmlEmitter
 
     private void EmitParagraph(ParagraphNode paragraph)
     {
-        string cssClass = paragraph.Alignment == ParagraphAlignment.Centered
-            ? "texinfo-center"
-            : paragraph.SuppressIndent ? "texinfo-noindent" : string.Empty;
+        string cssClass;
+        switch (paragraph.Alignment)
+        {
+            case ParagraphAlignment.Centered:
+                cssClass = "texinfo-center";
+                break;
+            case ParagraphAlignment.Exdented:
+                cssClass = "texinfo-exdent";
+                break;
+            default:
+                cssClass = paragraph.SuppressIndent ? "texinfo-noindent" : string.Empty;
+                break;
+        }
         _writer.BeginBlock("p");
         _writer.Attribute("class", cssClass);
         _writer.CloseStartTag();
@@ -215,13 +272,91 @@ internal sealed class HtmlEmitter
 
     private void EmitPreformatted(PreformattedNode preformatted)
     {
+        if (preformatted.Kind == TexinfoBlockKind.DisplayMath)
+        {
+            WarnAboutMathematics(preformatted.Position);
+        }
+        bool literal = IsLiteralBlock(preformatted.Kind);
         _writer.BeginBlock("pre");
         _writer.Attribute("class", PreformattedClass(preformatted.Kind));
         _writer.CloseStartTag();
         _writer.BeginPreformatted();
+        if (literal)
+        {
+            _literalDepth++;
+        }
         EmitInlines(preformatted.Content);
+        if (literal)
+        {
+            _literalDepth--;
+        }
         _writer.EndBlock("pre");
         _writer.EndPreformatted();
+    }
+
+    /// <summary>
+    /// Emits a preformatted environment that sits inside another one. There is no second
+    /// <c>&lt;pre&gt;</c> to open - the output subset has none and nothing here needs one, because
+    /// the text is already whitespace-preserved. One more step of indentation is exactly what the
+    /// nesting means, and it is what Texinfo's own printed output makes of it. The inner block
+    /// keeps its own literalness, so an <c>@example</c> inside a <c>@display</c> still has its
+    /// characters left alone while the prose around it is converted.
+    /// </summary>
+    private void EmitNestedPreformatted(PreformattedNode nested)
+    {
+        bool literal = IsLiteralBlock(nested.Kind);
+        bool outerPending = _nestedIndentPending;
+        _nestedPreformattedDepth++;
+        //The indentation is written when a line turns out to HAVE content, never on the newline
+        //that ended the one before. That is what keeps a blank line blank and stops the block's
+        //last line break from leaving indentation trailing behind it.
+        _nestedIndentPending = true;
+        if (literal)
+        {
+            _literalDepth++;
+        }
+        EmitInlines(nested.Content);
+        if (literal)
+        {
+            _literalDepth--;
+        }
+        _nestedPreformattedDepth--;
+        _nestedIndentPending = outerPending;
+    }
+
+    /// <summary>
+    /// Writes the pending indentation of a nested preformatted block before a node that is about
+    /// to open an element, so that the indentation sits outside the element rather than inside it.
+    /// Text nodes are excluded: they indent themselves, character by character, in
+    /// <see cref="WriteText"/>.
+    /// </summary>
+    private void FlushNestedIndentBefore(TexinfoNode node)
+    {
+        if (_nestedPreformattedDepth > 0 && _nestedIndentPending && !(node is TextNode))
+        {
+            _writer.Text(NestedIndentFor(_nestedPreformattedDepth));
+            _nestedIndentPending = false;
+        }
+    }
+
+    private static bool IsLiteralBlock(TexinfoBlockKind kind)
+    {
+        //@example and @lisp hold code, so the text conventions leave their content alone. @display
+        //and @format only preserve line breaks and indentation; their content is ordinary prose and
+        //is converted like any other.
+        switch (kind)
+        {
+            case TexinfoBlockKind.Example:
+            case TexinfoBlockKind.SmallExample:
+            case TexinfoBlockKind.Lisp:
+            case TexinfoBlockKind.SmallLisp:
+            //A displayed equation is written in TeX's notation, so its characters are as literal
+            //as any other computer text: nothing in it is prose to convert.
+            case TexinfoBlockKind.DisplayMath:
+                return true;
+            default:
+                return false;
+        }
     }
 
     private static string PreformattedClass(TexinfoBlockKind kind)
@@ -237,6 +372,8 @@ internal sealed class HtmlEmitter
             case TexinfoBlockKind.Format:
             case TexinfoBlockKind.SmallFormat:
                 return "texinfo-format";
+            case TexinfoBlockKind.DisplayMath:
+                return "texinfo-displaymath";
             default:
                 return "texinfo-example";
         }
@@ -308,6 +445,10 @@ internal sealed class HtmlEmitter
             case TexinfoBlockKind.Group:
                 //@group only asks that its content not be split across a page; it adds no structure.
                 EmitBlocks(environment.Blocks);
+                return;
+
+            case TexinfoBlockKind.DefinitionBlock:
+                EmitContainer("div", "texinfo-defblock", environment.Blocks);
                 return;
 
             case TexinfoBlockKind.DocumentDescription:
@@ -403,6 +544,9 @@ internal sealed class HtmlEmitter
             {
                 _writer.BeginBlock("dt");
                 _writer.CloseStartTag();
+                //An @ftable or @vtable term is also an index entry, and the printed index links
+                //back to the marker left here.
+                EmitInlineAnchor(_semantics.IndexEntryIdFor(term.IndexEntry));
                 if (hasStyle && style != InlineStyle.AsIs)
                 {
                     EmitStyled(style, term.Content);
@@ -459,6 +603,179 @@ internal sealed class HtmlEmitter
         _writer.EndBlock("table");
     }
 
+    // ----- definitions and floats --------------------------------------------------------------
+
+    /// <summary>
+    /// Writes a definition as a description list: one term per heading line, and one description
+    /// under them all. Texinfo prints the category out at the right margin, which needs a floating
+    /// box the output subset does not have; it is written at the head of the line instead, which is
+    /// where the Info output puts it and where it still labels what follows.
+    /// </summary>
+    private void EmitDefinition(DefinitionNode definition)
+    {
+        _writer.BeginBlock("dl");
+        _writer.Attribute("class", "texinfo-definition");
+        _writer.CloseStartTag();
+        foreach (DefinitionHeaderNode header in definition.Headers)
+        {
+            EmitDefinitionHeader(header);
+        }
+        if (definition.Blocks.Count > 0)
+        {
+            _writer.BeginBlock("dd");
+            _writer.CloseStartTag();
+            EmitBlocks(definition.Blocks);
+            _writer.EndBlock("dd");
+        }
+        _writer.EndBlock("dl");
+    }
+
+    private void EmitDefinitionHeader(DefinitionHeaderNode header)
+    {
+        _writer.BeginBlock("dt");
+        _writer.Attribute("class", "texinfo-def-line");
+        _writer.CloseStartTag();
+        EmitInlineAnchor(_semantics.IndexEntryIdFor(header.IndexEntry));
+
+        if (header.Category.Count > 0)
+        {
+            _writer.BeginInline("span");
+            _writer.Attribute("class", "texinfo-def-category");
+            _writer.CloseStartTag();
+            EmitInlines(header.Category);
+            if (header.ClassName.Count > 0 && header.ClassPreposition.Length > 0)
+            {
+                _writer.Text(" " + header.ClassPreposition + " ");
+                EmitInlines(header.ClassName);
+            }
+            _writer.Text(":");
+            _writer.EndInline("span");
+            _writer.Text(" ");
+        }
+        if (header.DataType.Count > 0)
+        {
+            EmitDefinitionCode("texinfo-def-type", header.DataType);
+            _writer.Text(" ");
+        }
+        EmitDefinitionCode("texinfo-def-name", header.Name);
+        if (header.Arguments.Count > 0)
+        {
+            if (!OmitsSpaceAfterName(header))
+            {
+                _writer.Text(" ");
+            }
+            //A typed definition sets its whole line as computer text; an untyped one sets its
+            //arguments as the metasyntactic variables they stand for, which is what the Texinfo
+            //manual asks for and what keeps a '--' in an option name out of the en-dash rule.
+            if (header.IsTyped)
+            {
+                EmitDefinitionCode("texinfo-def-arg", header.Arguments);
+            }
+            else
+            {
+                _writer.BeginInline("i");
+                _writer.Attribute("class", "texinfo-def-arg");
+                _writer.CloseStartTag();
+                EmitInlines(header.Arguments);
+                _writer.EndInline("i");
+            }
+        }
+        _writer.EndBlock("dt");
+    }
+
+    private void EmitDefinitionCode(string cssClass, IReadOnlyList<TexinfoNode> content)
+    {
+        _writer.BeginInline("code");
+        _writer.Attribute("class", cssClass);
+        _writer.CloseStartTag();
+        _literalDepth++;
+        EmitInlines(content);
+        _literalDepth--;
+        _writer.EndInline("code");
+    }
+
+    /// <summary>
+    /// True when the <c>txidefnamenospace</c> flag asks for the space after the name to go, and
+    /// the arguments open with the bracket that flag exists for.
+    /// </summary>
+    private bool OmitsSpaceAfterName(DefinitionHeaderNode header)
+    {
+        if (!_document.Values.ContainsKey("txidefnamenospace"))
+        {
+            return false;
+        }
+        string text = InlineNodes.ToPlainText(header.Arguments);
+        return text.Length > 0 && (text[0] == '(' || text[0] == '[');
+    }
+
+    private void EmitFloat(FloatNode node)
+    {
+        _writer.BeginBlock("div");
+        _writer.Attribute("class", "texinfo-float");
+        _writer.Attribute("id", _semantics.ElementIdFor(node.Label));
+        _writer.CloseStartTag();
+        EmitBlocks(node.Blocks);
+        if (node.ReferenceText.Length > 0 || node.Caption.Count > 0)
+        {
+            _writer.BeginBlock("p");
+            _writer.Attribute("class", "texinfo-float-caption");
+            _writer.CloseStartTag();
+            if (node.ReferenceText.Length > 0)
+            {
+                _writer.Text(node.Caption.Count > 0
+                    ? node.ReferenceText + ": "
+                    : node.ReferenceText);
+            }
+            EmitInlines(node.Caption);
+            _writer.EndBlock("p");
+        }
+        _writer.EndBlock("div");
+    }
+
+    private void EmitListOfFloats(DirectiveNode directive)
+    {
+        string typeName = directive.Argument.Trim();
+        IReadOnlyList<FloatNode> floats = _semantics.FloatsOfType(typeName);
+        if (floats.Count == 0)
+        {
+            _warnings.Add(TexinfoWarningCategory.Emit, directive.Position,
+                $"'@listoffloats {typeName}' printed nothing: the document has no float of that type.");
+            return;
+        }
+        _writer.BeginBlock("div");
+        _writer.Attribute("class", "texinfo-listoffloats");
+        _writer.CloseStartTag();
+        foreach (FloatNode node in floats)
+        {
+            _writer.BeginBlock("p");
+            _writer.Attribute("class", "texinfo-listoffloats-entry");
+            _writer.CloseStartTag();
+            string elementId = _semantics.ElementIdFor(node.Label);
+            if (elementId.Length > 0)
+            {
+                _writer.BeginInline("a");
+                _writer.Attribute("href", "#" + elementId);
+                _writer.CloseStartTag();
+            }
+            _writer.Text(node.ReferenceText.Length > 0 ? node.ReferenceText : "(untitled)");
+            if (elementId.Length > 0)
+            {
+                _writer.EndInline("a");
+            }
+            //A short caption exists precisely so that a list can carry something briefer than the
+            //caption printed under the float itself.
+            IReadOnlyList<TexinfoNode> description =
+                node.ShortCaption.Count > 0 ? node.ShortCaption : node.Caption;
+            if (description.Count > 0)
+            {
+                _writer.Text(": ");
+                EmitRepeatedInlines(description);
+            }
+            _writer.EndBlock("p");
+        }
+        _writer.EndBlock("div");
+    }
+
     // ----- directives ------------------------------------------------------------------------
 
     private void EmitDirective(DirectiveNode directive)
@@ -487,12 +804,10 @@ internal sealed class HtmlEmitter
                 //A hint that so much space should remain on the page; nothing to render.
                 return;
             case DirectiveKind.PrintIndex:
-                if (!_warnedAboutIndex)
-                {
-                    _warnedAboutIndex = true;
-                    _warnings.Add(TexinfoWarningCategory.Emit, directive.Position,
-                        "'@printindex' is not rendered yet; the index was left out of the document.");
-                }
+                EmitIndex(directive);
+                return;
+            case DirectiveKind.ListOfFloats:
+                EmitListOfFloats(directive);
                 return;
             default:
                 return;
@@ -526,11 +841,86 @@ internal sealed class HtmlEmitter
             {
                 _writer.Text(entry.Section.Number + " ");
             }
-            EmitInlines(entry.Section.Title);
+            EmitRepeatedInlines(entry.Section.Title);
             _writer.EndInline("a");
             _writer.EndBlock("p");
         }
         _writer.EndBlock("div");
+    }
+
+    // ----- indices ---------------------------------------------------------------------------
+
+    private void EmitIndex(DirectiveNode directive)
+    {
+        string name = directive.Argument.Trim();
+        PrintedIndex index = _semantics.IndexNamed(name);
+        if (index == null || index.Entries.Count == 0)
+        {
+            _warnings.Add(TexinfoWarningCategory.Emit, directive.Position,
+                $"'@printindex {name}' printed nothing: the document files no entries in that index.");
+            return;
+        }
+        _writer.BeginBlock("div");
+        _writer.Attribute("class", "texinfo-index");
+        _writer.CloseStartTag();
+        string letter = null;
+        foreach (PrintedIndexEntry entry in index.Entries)
+        {
+            if (!string.Equals(letter, entry.Letter, StringComparison.Ordinal))
+            {
+                letter = entry.Letter;
+                _writer.BeginBlock("p");
+                _writer.Attribute("class", "texinfo-index-letter");
+                _writer.CloseStartTag();
+                _writer.Text(letter);
+                _writer.EndBlock("p");
+            }
+            EmitIndexEntry(entry);
+        }
+        _writer.EndBlock("div");
+    }
+
+    private void EmitIndexEntry(PrintedIndexEntry entry)
+    {
+        _writer.BeginBlock("p");
+        _writer.Attribute("class", "texinfo-index-entry");
+        _writer.CloseStartTag();
+        _writer.BeginInline("a");
+        _writer.Attribute("href", entry.ElementId.Length > 0 ? "#" + entry.ElementId : null);
+        _writer.CloseStartTag();
+        if (entry.UseCodeFont)
+        {
+            _writer.BeginInline("code");
+            _writer.CloseStartTag();
+            _literalDepth++;
+            EmitRepeatedInlines(entry.Source.Content);
+            _literalDepth--;
+            _writer.EndInline("code");
+        }
+        else
+        {
+            EmitRepeatedInlines(entry.Source.Content);
+        }
+        _writer.EndInline("a");
+        //Without page numbers, which the markup cannot know, the section an entry was written in is
+        //what tells two identically worded entries apart and what makes the line worth following.
+        SectionNode section = entry.Source.Section;
+        if (section == null || section.ElementId.Length == 0)
+        {
+            _writer.EndBlock("p");
+            return;
+        }
+        _writer.BeginInline("span");
+        _writer.Attribute("class", "texinfo-index-section");
+        _writer.CloseStartTag();
+        _writer.Text(" — ");
+        _writer.BeginInline("a");
+        _writer.Attribute("href", "#" + section.ElementId);
+        _writer.CloseStartTag();
+        EmitRepeatedInlines(section.Title);
+        _writer.EndInline("a");
+        _writer.EndInline("span");
+        _writer.EndBlock("p");
     }
 
     private void EmitBlankLines(string argument)
@@ -560,7 +950,7 @@ internal sealed class HtmlEmitter
 
     private void EmitAnchorBlock(string elementId)
     {
-        if (elementId.Length == 0)
+        if (elementId.Length == 0 || _repeatedDepth > 0)
         {
             return;
         }
@@ -576,9 +966,9 @@ internal sealed class HtmlEmitter
 
     // ----- footnotes -------------------------------------------------------------------------
 
-    private void EmitFootnotes()
+    private void EmitFootnoteList(IReadOnlyList<FootnoteNode> footnotes)
     {
-        if (_document.Footnotes.Count == 0)
+        if (footnotes.Count == 0)
         {
             return;
         }
@@ -592,7 +982,7 @@ internal sealed class HtmlEmitter
         _writer.CloseStartTag();
         _writer.Text("Footnotes");
         _writer.EndBlock("p");
-        foreach (FootnoteNode footnote in _document.Footnotes)
+        foreach (FootnoteNode footnote in footnotes)
         {
             _writer.BeginBlock("p");
             _writer.Attribute("class", "texinfo-footnote-item");
@@ -615,12 +1005,25 @@ internal sealed class HtmlEmitter
         }
     }
 
+    /// <summary>
+    /// Emits content somewhere other than where the document wrote it - a contents line, an index
+    /// line - where the identifiers it carries have already been emitted at the real place. A
+    /// second copy of an identifier would give the document two destinations of the same name.
+    /// </summary>
+    private void EmitRepeatedInlines(IReadOnlyList<TexinfoNode> nodes)
+    {
+        _repeatedDepth++;
+        EmitInlines(nodes);
+        _repeatedDepth--;
+    }
+
     private void EmitInline(TexinfoNode node)
     {
+        FlushNestedIndentBefore(node);
         switch (node)
         {
             case TextNode text:
-                _writer.Text(text.Text);
+                WriteText(text.Text);
                 return;
             case GlyphNode glyph:
                 _writer.Text(glyph.Text);
@@ -631,6 +1034,9 @@ internal sealed class HtmlEmitter
                 return;
             case InlineCommandNode command:
                 EmitInlineCommand(command);
+                return;
+            case AcronymNode acronym:
+                EmitAcronym(acronym);
                 return;
             case CrossReferenceNode reference:
                 EmitCrossReference(reference);
@@ -650,14 +1056,18 @@ internal sealed class HtmlEmitter
             case MusicSnippetNode snippet:
                 EmitMusicSnippet(snippet, asBlock: false);
                 return;
+            case PreformattedNode nested:
+                EmitNestedPreformatted(nested);
+                return;
             case VerbatimNode verbatim:
                 _writer.BeginInline("code");
                 _writer.CloseStartTag();
                 _writer.Text(verbatim.Text);
                 _writer.EndInline("code");
                 return;
-            case IndexEntryNode:
-                //An index entry marks a place; the index itself is what renders it.
+            case IndexEntryNode entry:
+                //An index entry marks a place; the index itself is what renders its text.
+                EmitInlineAnchor(_semantics.IndexEntryIdFor(entry));
                 return;
             default:
                 EmitInlines(Children(node));
@@ -675,13 +1085,27 @@ internal sealed class HtmlEmitter
         return children;
     }
 
+    /// <summary>
+    /// Reports, once for the document, that mathematics was set as ordinary text. There is no
+    /// mathematical typesetter here and there is not going to be one, so this is a statement of
+    /// what the reader is getting rather than a gap waiting to be filled.
+    /// </summary>
+    private void WarnAboutMathematics(SourcePosition position)
+    {
+        if (_warnedAboutMath)
+        {
+            return;
+        }
+        _warnedAboutMath = true;
+        _warnings.Add(TexinfoWarningCategory.Emit, position,
+            "'@math' was rendered as styled text; this library has no mathematical typesetter.");
+    }
+
     private void EmitInlineCommand(InlineCommandNode command)
     {
-        if (command.Style == InlineStyle.Math && !_warnedAboutMath)
+        if (command.Style == InlineStyle.Math)
         {
-            _warnedAboutMath = true;
-            _warnings.Add(TexinfoWarningCategory.Emit, command.Position,
-                "'@math' was rendered as styled text; this library has no mathematical typesetter.");
+            WarnAboutMathematics(command.Position);
         }
         if (command.Style == InlineStyle.SortAs)
         {
@@ -776,23 +1200,177 @@ internal sealed class HtmlEmitter
                 tag = "sub";
                 cssClass = null;
                 break;
+            case InlineStyle.SubEntry:
+                //A second-level index entry reads as a continuation of the entry it hangs from.
+                _writer.Text(", ");
+                EmitInlines(content);
+                return;
+            case InlineStyle.SeeEntry:
+                EmitIndexRedirect("see ", content);
+                return;
+            case InlineStyle.SeeAlso:
+                EmitIndexRedirect("see also ", content);
+                return;
+            case InlineStyle.NoBreak:
+                //@w asks that its content not be broken across lines, and a space that cannot be
+                //broken at is the only way to say so in the output subset.
+                _noBreakDepth++;
+                EmitInlines(content);
+                _noBreakDepth--;
+                return;
+            case InlineStyle.Dimension:
+                //@dmn sets a unit of measure off from the number in front of it, without letting a
+                //line break come between the two.
+                _writer.Raw("&#160;");
+                EmitInlines(content);
+                return;
             default:
-                //@asis, @w, @dmn, @clicksequence, @subentry and the see-entry commands add no
-                //appearance of their own; their content stands on its own.
+                //@asis and @clicksequence add no appearance of their own; their content stands on
+                //its own.
                 EmitInlines(content);
                 return;
         }
+        //@samp is printed inside single quotation marks, and they belong to the surrounding text
+        //rather than to the sample, so they are written outside the element.
+        bool quoted = style == InlineStyle.Sample;
+        if (quoted)
+        {
+            _writer.Text("‘");
+        }
+        bool literal = IsLiteralStyle(style);
         _writer.BeginInline(tag);
         _writer.Attribute("class", cssClass);
         _writer.CloseStartTag();
+        if (literal)
+        {
+            _literalDepth++;
+        }
         EmitInlines(content);
+        if (literal)
+        {
+            _literalDepth--;
+        }
         _writer.EndInline(tag);
+        if (quoted)
+        {
+            _writer.Text("’");
+        }
+    }
+
+    /// <summary>
+    /// Writes an <c>@acronym</c> or <c>@abbr</c>. The short form is what the sentence reads; the
+    /// words behind it, when the document gave them, follow in parentheses, which is the
+    /// convention every printed manual uses and the one Texinfo's own output follows.
+    /// </summary>
+    private void EmitAcronym(AcronymNode acronym)
+    {
+        if (acronym.IsAcronym)
+        {
+            EmitStyled(InlineStyle.SmallCaps, acronym.ShortForm);
+        }
+        else
+        {
+            EmitInlines(acronym.ShortForm);
+        }
+        if (acronym.Meaning.Count > 0)
+        {
+            _writer.Text(" (");
+            EmitInlines(acronym.Meaning);
+            _writer.Text(")");
+        }
+    }
+
+    private void EmitIndexRedirect(string wording, IReadOnlyList<TexinfoNode> content)
+    {
+        //An index entry that redirects to another one prints its 'see' in the body font, italic by
+        //the convention every printed index follows, and the entry it points at after it.
+        _writer.BeginInline("i");
+        _writer.CloseStartTag();
+        _writer.Text(wording);
+        _writer.EndInline("i");
+        EmitInlines(content);
+    }
+
+    private static bool IsLiteralStyle(InlineStyle style)
+    {
+        //The code-like commands: what they wrap is a literal sequence of characters, so a run of
+        //hyphens in an option name and an apostrophe in a shell command survive as written.
+        switch (style)
+        {
+            case InlineStyle.Code:
+            case InlineStyle.CommandName:
+            case InlineStyle.EnvironmentVariable:
+            case InlineStyle.FileName:
+            case InlineStyle.IndicateUrl:
+            case InlineStyle.Key:
+            case InlineStyle.Keyboard:
+            case InlineStyle.Option:
+            case InlineStyle.Sample:
+            case InlineStyle.Typewriter:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    /// <summary>
+    /// Indents each line of text written inside a nested preformatted block. A line is indented
+    /// when its first character arrives, so a line that turns out to be empty stays empty.
+    /// </summary>
+    private string ApplyNestedIndent(string text)
+    {
+        if (text.Length == 0)
+        {
+            return text;
+        }
+        string indent = NestedIndentFor(_nestedPreformattedDepth);
+        StringBuilder builder = new StringBuilder(text.Length + indent.Length);
+        foreach (char c in text)
+        {
+            if (c == '\n')
+            {
+                _nestedIndentPending = true;
+                builder.Append(c);
+                continue;
+            }
+            if (_nestedIndentPending)
+            {
+                builder.Append(indent);
+                _nestedIndentPending = false;
+            }
+            builder.Append(c);
+        }
+        return builder.ToString();
+    }
+
+    private static string NestedIndentFor(int depth)
+    {
+        if (depth <= 1)
+        {
+            return NestedPreformattedIndent;
+        }
+        StringBuilder indent = new StringBuilder(NestedPreformattedIndent.Length * depth);
+        for (int level = 0; level < depth; level++)
+        {
+            indent.Append(NestedPreformattedIndent);
+        }
+        return indent.ToString();
+    }
+
+    private void WriteText(string text)
+    {
+        string result = _literalDepth > 0 ? text : TextConventions.Apply(text);
+        if (_nestedPreformattedDepth > 0)
+        {
+            result = ApplyNestedIndent(result);
+        }
+        _writer.Text(_noBreakDepth > 0 ? result.Replace(' ', ' ') : result);
     }
 
     private void EmitCrossReference(CrossReferenceNode reference)
     {
-        //Wave 4 turns these into real links. For now the reference reads correctly even though it
-        //does not yet jump: the wording Texinfo prescribes, followed by the destination's name.
+        //Texinfo prescribes the wording: @xref opens a sentence and is capitalized, @pxref is
+        //parenthetical and is not, and @ref supplies nothing of its own.
         switch (reference.Kind)
         {
             case CrossReferenceKind.SentenceStart:
@@ -803,30 +1381,85 @@ internal sealed class HtmlEmitter
                 _writer.Text("see ");
                 break;
         }
+        //A reference into another manual has no destination in this document, and inventing one
+        //would be worse than leaving the reader with the manual's name, which is what follows.
+        string elementId = reference.IsExternal
+            ? string.Empty
+            : _semantics.ElementIdFor(reference.NodeName);
+        if (elementId.Length == 0 && !reference.IsExternal)
+        {
+            NoteUnresolvedReference(reference);
+        }
+        if (elementId.Length > 0)
+        {
+            _writer.BeginInline("a");
+            _writer.Attribute("href", "#" + elementId);
+            _writer.CloseStartTag();
+        }
         if (reference.Title.Count > 0)
         {
             EmitInlines(reference.Title);
         }
         else if (reference.Label.Length > 0)
         {
-            _writer.Text(reference.Label);
+            WriteText(reference.Label);
         }
         else
         {
-            _writer.Text(reference.NodeName);
+            //A float is addressed by a label such as 'fig:staff-sizes', which tells a reader
+            //nothing; its type and number are what the reference is meant to read as.
+            string floatText = _semantics.ReferenceTextFor(reference.NodeName);
+            WriteText(floatText.Length > 0 ? floatText : reference.NodeName);
+        }
+        if (elementId.Length > 0)
+        {
+            _writer.EndInline("a");
         }
         if (reference.Manual.Length > 0)
         {
             _writer.Text(" in ");
             _writer.BeginInline("i");
             _writer.CloseStartTag();
-            _writer.Text(reference.Manual);
+            WriteText(reference.Manual);
             _writer.EndInline("i");
         }
     }
 
+    private void NoteUnresolvedReference(CrossReferenceNode reference)
+    {
+        _unresolvedReferenceCount++;
+        if (_unresolvedReferenceCount > 1)
+        {
+            return;
+        }
+        _firstUnresolvedReference = reference.NodeName;
+        _firstUnresolvedPosition = reference.Position;
+    }
+
+    private void ReportUnresolvedReferences()
+    {
+        if (_unresolvedReferenceCount == 0)
+        {
+            return;
+        }
+        //One message for the lot: a manual that has lost an included file loses every reference
+        //into it at once, and a thousand identical warnings would bury everything else.
+        _warnings.Add(TexinfoWarningCategory.Reference, _firstUnresolvedPosition,
+            $"{_unresolvedReferenceCount.ToString(CultureInfo.InvariantCulture)} cross reference(s) "
+            + "name a destination this document does not define, starting with "
+            + $"'{_firstUnresolvedReference}'; they were rendered as text without a link.");
+    }
+
     private void EmitLink(LinkNode link)
     {
+        //A third argument replaces the reference outright: Texinfo says the URL is then not output
+        //in any format and the second argument is ignored, which is how a manual writes a reference
+        //that is already sufficiently referential in its own words.
+        if (link.Replacement.Length > 0)
+        {
+            WriteText(link.Replacement);
+            return;
+        }
         string href = link.Kind == LinkKind.Email
             ? (link.Target.Length > 0 ? "mailto:" + link.Target : string.Empty)
             : link.Target;
@@ -837,12 +1470,10 @@ internal sealed class HtmlEmitter
         {
             EmitInlines(link.Text);
         }
-        else if (link.Replacement.Length > 0)
-        {
-            _writer.Text(link.Replacement);
-        }
         else
         {
+            //The URL stands as its own visible text, and it is a literal one: no run of hyphens in
+            //it is an en dash.
             _writer.Text(link.Target);
         }
         _writer.EndInline("a");
@@ -864,7 +1495,7 @@ internal sealed class HtmlEmitter
 
     private void EmitInlineAnchor(string elementId)
     {
-        if (elementId.Length == 0)
+        if (elementId.Length == 0 || _repeatedDepth > 0)
         {
             return;
         }
@@ -878,7 +1509,7 @@ internal sealed class HtmlEmitter
 
     private void EmitImage(ImageNode image, bool asBlock)
     {
-        if (!_images.TryResolve(image.FileName, image.Extension, out string path))
+        if (!_images.TryResolve(image.FileName, image.Extension, out string source))
         {
             _warnings.Add(TexinfoWarningCategory.Include, image.Position,
                 $"Image '{image.FileName}' was not found on the search path; its alternate text was "
@@ -913,7 +1544,7 @@ internal sealed class HtmlEmitter
         {
             _writer.BeginInline("img");
         }
-        _writer.Attribute("src", path);
+        _writer.Attribute("src", source);
         _writer.Attribute("alt", image.AlternateText);
         _writer.Attribute("class", "texinfo-image");
         _writer.Attribute("style", style.Length > 0 ? style : null);
@@ -956,18 +1587,43 @@ internal sealed class HtmlEmitter
 
     private void EmitMusicSnippet(MusicSnippetNode snippet, bool asBlock)
     {
-        if (_musicSnippetCount == 0)
+        PreparedSnippet prepared = _snippets.Prepare(snippet);
+        //'quote' asks for the snippet to stand in from the margin. An inline style says it because
+        //a bordered container would turn the snippet into a box, and Html2Pdf lays a box out as a
+        //unit - which is the trap that swallowed multitables inside @quotation.
+        string indent = asBlock && prepared.Options.Quote ? "margin-left: 2em" : null;
+        if (prepared.ShowSource)
         {
-            _firstMusicSnippet = snippet.Position;
+            //The source comes first and the engraving under it, which is the order a reader of a
+            //manual expects: this is the input, this is what it produces.
+            EmitSnippetSource(prepared.SourceText, asBlock, indent);
         }
-        _musicSnippetCount++;
-        string text = snippet.IsFileReference
-            ? "@" + snippet.CommandName + " " + snippet.Content
-            : snippet.Content;
+        string alternate = AlternateTextFor(snippet, prepared);
+        foreach (string path in prepared.ImagePaths)
+        {
+            if (asBlock)
+            {
+                _writer.BeginVoidBlock("img");
+            }
+            else
+            {
+                _writer.BeginInline("img");
+            }
+            _writer.Attribute("src", path);
+            _writer.Attribute("alt", alternate);
+            _writer.Attribute("class", "texinfo-lilypond-image");
+            _writer.Attribute("style", indent);
+            _writer.CloseStartTag();
+        }
+    }
+
+    private void EmitSnippetSource(string text, bool asBlock, string indent)
+    {
         if (asBlock)
         {
             _writer.BeginBlock("pre");
             _writer.Attribute("class", "texinfo-lilypond");
+            _writer.Attribute("style", indent);
             _writer.CloseStartTag();
             _writer.BeginPreformatted();
             _writer.Text(text);
@@ -982,14 +1638,21 @@ internal sealed class HtmlEmitter
         _writer.EndInline("code");
     }
 
-    private void ReportMusicSnippets()
+    private static string AlternateTextFor(MusicSnippetNode snippet, PreparedSnippet prepared)
     {
-        if (_musicSnippetCount == 0)
+        if (snippet.IsFileReference)
         {
-            return;
+            return snippet.Content.Trim();
         }
-        _warnings.Add(TexinfoWarningCategory.Emit, _firstMusicSnippet,
-            $"{_musicSnippetCount.ToString(CultureInfo.InvariantCulture)} music snippet(s) were "
-            + "emitted as their source text; no snippet renderer is available to engrave them.");
+        //The first line of the music is the closest thing a snippet has to a name.
+        foreach (string line in prepared.SourceText.Split('\n'))
+        {
+            string trimmed = line.Trim();
+            if (trimmed.Length > 0)
+            {
+                return trimmed.Length <= 80 ? trimmed : trimmed.Substring(0, 77) + "...";
+            }
+        }
+        return "music";
     }
 }

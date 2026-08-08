@@ -12,7 +12,7 @@ using Xunit;
 namespace CodeBrix.Texinfo2Html.Tests;
 
 /// <summary>
-/// Wave 2 corpus gate: every manual of the English LilyPond documentation must parse into a
+/// The parser's corpus gate: every manual of the English LilyPond documentation must parse into a
 /// document tree with no structural errors and only the warnings that a source checkout is
 /// expected to produce. The corpus is read locally from ~/GitHome/lilypond and never committed;
 /// these tests skip cleanly when it is not present.
@@ -163,7 +163,7 @@ public class LilypondParserCorpusGateTests
     }
 
     [Fact]
-    public void Notation_manual_builds_the_structures_later_waves_depend_on()
+    public void Notation_manual_builds_every_structure_the_emitter_has_to_render()
     {
         SkipUnlessCorpusPresent();
 

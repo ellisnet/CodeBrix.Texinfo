@@ -9,17 +9,28 @@ using Xunit;
 namespace CodeBrix.Texinfo2Html.Tests;
 
 /// <summary>
-/// Wave 3 corpus gate at the markup level: every manual of the English LilyPond documentation must
-/// render to HTML with a complete sectioning tree, a usable table of contents, and only the
-/// warnings a source checkout is expected to produce. The corpus is read locally from
-/// ~/GitHome/lilypond and never committed; these tests skip cleanly when it is not present.
+/// Corpus gate at the markup level: every manual of the English LilyPond documentation must render
+/// to HTML with a complete sectioning tree, a usable table of contents, an index that leads
+/// somewhere, and only the warnings a source checkout is expected to produce. The corpus is read
+/// locally from ~/GitHome/lilypond and never committed; these tests skip cleanly when it is not
+/// present.
 /// </summary>
 /// <remarks>
-/// Four warning kinds are expected here and nothing else is tolerated. Raw <c>@tex</c> blocks are
+/// <para>
+/// Five warning kinds are expected here and nothing else is tolerated. Raw <c>@tex</c> blocks are
 /// skipped by design; one macro warning is the deliberate refusal to let LilyPond's TeX-branch
 /// <c>@macro cindex</c> shadow the built-in; the include warnings name files the LilyPond build
-/// generates and a source checkout therefore lacks; and the emit warnings are this wave's known
-/// gaps, which are the index and the engraving of music snippets.
+/// generates and a source checkout therefore lacks; the reference warning is the consequence of
+/// those missing files, since a reference into a chapter that was never included has nothing to
+/// point at; and the emit warnings are the remaining gaps, which are the engraving of music
+/// snippets and mathematics.
+/// </para>
+/// <para>
+/// The corpus is rendered with no snippet renderer registered, which is the default and the shape
+/// every consumer gets out of the box. That the whole corpus produces no unrecognized-option
+/// warning is itself a result: the measured option vocabulary really does cover what these manuals
+/// write.
+/// </para>
 /// </remarks>
 public class LilypondEmitterCorpusGateTests
 {
@@ -71,11 +82,15 @@ public class LilypondEmitterCorpusGateTests
            //Files and pictures the LilyPond build generates, absent from a source checkout.
            || (message.StartsWith("Include:", StringComparison.Ordinal)
                && message.Contains("was not found on the search path"))
-           //This wave's known gaps, plus the one degradation the design accepts outright:
-           //mathematics has no typesetter here and never will have.
+           //References into the chapters those missing files would have contributed.
+           || (message.StartsWith("Reference:", StringComparison.Ordinal)
+               && message.Contains("name a destination this document does not define"))
+           //The remaining gap, plus the one degradation the design accepts outright: mathematics
+           //has no typesetter here and never will have. The snippet message is matched on the
+           //fallback it describes rather than on the words 'music snippet', so that a renderer
+           //FAILING on a corpus manual could never be mistaken for one never having been asked.
            || (message.StartsWith("Emit:", StringComparison.Ordinal)
-               && (message.Contains("@printindex") || message.Contains("music snippet")
-                   || message.Contains("@math")));
+               && (message.Contains("emitted as their source text") || message.Contains("@math")));
 
     [Theory]
     [InlineData("changes.tely", "LilyPond Changes", 10)]
@@ -107,6 +122,37 @@ public class LilypondEmitterCorpusGateTests
     }
 
     [Fact]
+    public void Every_link_a_manual_writes_has_a_destination_in_the_same_document()
+    {
+        SkipUnlessCorpusPresent();
+
+        //Arrange
+        List<string> broken = new List<string>();
+        int links = 0;
+
+        //Act - contents lines, cross references and index lines all end up here.
+        foreach (string manual in Manuals)
+        {
+            string body = RenderManual(manual).BodyHtml;
+            HashSet<string> defined = DefinedIdentifiers(body);
+            foreach (string target in LinkTargets(body))
+            {
+                links++;
+                if (!defined.Contains(target))
+                {
+                    broken.Add($"{manual}: #{target}");
+                }
+            }
+        }
+
+        //Assert
+        string.Join(Environment.NewLine, broken.Take(10)).Should().Be(string.Empty);
+        //Seven of the eight manuals ask for a contents, five print an index, and every manual
+        //cross references itself, so this is a large number even before the index arrives.
+        links.Should().BeGreaterThanOrEqualTo(10_000);
+    }
+
+    [Fact]
     public void Every_manual_builds_a_contents_whose_links_all_have_a_destination()
     {
         SkipUnlessCorpusPresent();
@@ -119,11 +165,12 @@ public class LilypondEmitterCorpusGateTests
         foreach (string manual in Manuals)
         {
             string body = RenderManual(manual).BodyHtml;
-            foreach (string target in ContentsTargets(body))
+            HashSet<string> defined = DefinedIdentifiers(body);
+            foreach (string target in TargetsUnder(body, "<p class=\"texinfo-toc-"))
             {
                 entries++;
                 //Every entry must point at an identifier the same document defines.
-                if (!body.Contains("id=\"" + target + "\"", StringComparison.Ordinal))
+                if (!defined.Contains(target))
                 {
                     broken.Add($"{manual}: #{target}");
                 }
@@ -135,6 +182,27 @@ public class LilypondEmitterCorpusGateTests
         //Seven of the eight manuals ask for a contents; music-glossary.tely has its @contents
         //commented out in the source, so its 361 sections contribute no entries here.
         entries.Should().BeGreaterThanOrEqualTo(900);
+    }
+
+    [Theory]
+    [InlineData("learning.tely", 300)]
+    [InlineData("usage.tely", 80)]
+    [InlineData("notation.tely", 3_000)]
+    public void Manual_prints_an_index_of_the_entries_it_collected(string manualFileName,
+        int minimumEntries)
+    {
+        SkipUnlessCorpusPresent();
+
+        //Arrange + Act
+        string body = RenderManual(manualFileName).BodyHtml;
+
+        //Assert - LilyPond folds its function index into the concept one, so a single @printindex
+        //prints both, and the code-font entries are what proves the merge happened.
+        CountOf(body, "<div class=\"texinfo-index\">").Should().Be(1);
+        CountOf(body, "<p class=\"texinfo-index-entry\">")
+            .Should().BeGreaterThanOrEqualTo(minimumEntries);
+        CountOf(body, "<p class=\"texinfo-index-letter\">").Should().BeGreaterThan(10);
+        body.Contains("<code>\\").Should().BeTrue();
     }
 
     [Fact]
@@ -160,9 +228,43 @@ public class LilypondEmitterCorpusGateTests
     private static int CountOf(string text, string value)
         => text.Split(value).Length - 1;
 
-    private static IEnumerable<string> ContentsTargets(string body)
+    private static HashSet<string> DefinedIdentifiers(string body)
     {
-        const string marker = "<p class=\"texinfo-toc-";
+        HashSet<string> identifiers = new HashSet<string>(StringComparer.Ordinal);
+        int index = 0;
+        while (true)
+        {
+            index = body.IndexOf(" id=\"", index, StringComparison.Ordinal);
+            if (index < 0)
+            {
+                return identifiers;
+            }
+            index += 5;
+            int end = body.IndexOf('"', index);
+            identifiers.Add(body.Substring(index, end - index));
+            index = end;
+        }
+    }
+
+    private static IEnumerable<string> LinkTargets(string body)
+    {
+        int index = 0;
+        while (true)
+        {
+            index = body.IndexOf("href=\"#", index, StringComparison.Ordinal);
+            if (index < 0)
+            {
+                yield break;
+            }
+            index += 7;
+            int end = body.IndexOf('"', index);
+            yield return body.Substring(index, end - index);
+            index = end;
+        }
+    }
+
+    private static IEnumerable<string> TargetsUnder(string body, string marker)
+    {
         int index = 0;
         while (true)
         {
@@ -171,15 +273,15 @@ public class LilypondEmitterCorpusGateTests
             {
                 yield break;
             }
-            int hrefStart = body.IndexOf("href=\"#", index, StringComparison.Ordinal);
-            if (hrefStart < 0)
+            int start = body.IndexOf("href=\"#", index, StringComparison.Ordinal);
+            if (start < 0)
             {
                 yield break;
             }
-            hrefStart += 7;
-            int hrefEnd = body.IndexOf('"', hrefStart);
-            yield return body.Substring(hrefStart, hrefEnd - hrefStart);
-            index = hrefEnd;
+            start += 7;
+            int end = body.IndexOf('"', start);
+            yield return body.Substring(start, end - start);
+            index = end;
         }
     }
 }

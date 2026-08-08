@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Text;
 
@@ -49,6 +50,99 @@ internal static class MacroArgumentParser
             return arguments;
         }
         SplitAtTopLevelCommas(text, arguments, unescape: false);
+        return arguments;
+    }
+
+    /// <summary>
+    /// Splits the rest-of-line text of a LINE MACRO invocation into arguments. These follow
+    /// different rules from every other invocation form: arguments are separated by SPACES rather
+    /// than commas, a pair of braces enclosing an argument is removed, an empty argument has to be
+    /// written as <c>{}</c>, and the last argument takes the whole remainder of the line so that
+    /// it may contain spaces without being braced. Arguments are taken verbatim - no backslash
+    /// unescaping - as line-form arguments are everywhere else.
+    /// </summary>
+    /// <param name="text">The rest-of-line text after the macro name.</param>
+    /// <param name="parameterCount">The number of formal parameters of the macro.</param>
+    public static List<string> SplitLineMacroArguments(string text, int parameterCount)
+    {
+        List<string> arguments = new List<string>();
+        if (parameterCount <= 0)
+        {
+            if (text.Trim().Length > 0)
+            {
+                arguments.Add(text.Trim());
+            }
+            return arguments;
+        }
+        int index = 0;
+        SkipSpaces(text, ref index);
+        while (arguments.Count < parameterCount - 1 && index < text.Length)
+        {
+            arguments.Add(ReadLineMacroArgument(text, ref index));
+            SkipSpaces(text, ref index);
+        }
+
+        //The final argument is the rest of the line, which is what lets it hold spaces unbraced.
+        //It is still unwrapped when the whole of it is one brace group, so that '{}' is empty and
+        //'{a b}' is 'a b'.
+        string remainder = text.Substring(index).Trim();
+        int scan = 0;
+        if (remainder.StartsWith("{", StringComparison.Ordinal))
+        {
+            string unwrapped = ReadLineMacroArgument(remainder, ref scan);
+            arguments.Add(scan >= remainder.Length ? unwrapped : remainder);
+        }
+        else
+        {
+            arguments.Add(remainder);
+        }
+        return arguments;
+    }
+
+    /// <summary>
+    /// Splits the braced argument list of a built-in command at its top-level commas, keeping at
+    /// most <paramref name="maximumArguments"/> of them: a comma inside the last argument is text
+    /// rather than a separator, which is what lets an inline conditional carry a sentence.
+    /// Backslashes are ordinary characters here - that quoting belongs to macro invocation, not to
+    /// the built-in commands.
+    /// </summary>
+    /// <param name="text">The raw text between the command's braces.</param>
+    /// <param name="maximumArguments">The most arguments to produce.</param>
+    public static List<string> SplitCommandArguments(string text, int maximumArguments)
+    {
+        List<string> arguments = new List<string>();
+        StringBuilder current = new StringBuilder();
+        int depth = 0;
+        int index = 0;
+        while (index < text.Length)
+        {
+            char c = text[index];
+            if (c == '@' && index + 1 < text.Length)
+            {
+                //An @-pair is opaque, which is how @comma{} writes a comma that does not split.
+                current.Append(c).Append(text[index + 1]);
+                index += 2;
+                continue;
+            }
+            if (c == '{')
+            {
+                depth++;
+            }
+            else if (c == '}' && depth > 0)
+            {
+                depth--;
+            }
+            else if (c == ',' && depth == 0 && arguments.Count < maximumArguments - 1)
+            {
+                arguments.Add(current.ToString().Trim());
+                current.Clear();
+                index++;
+                continue;
+            }
+            current.Append(c);
+            index++;
+        }
+        arguments.Add(current.ToString().Trim());
         return arguments;
     }
 
@@ -112,6 +206,84 @@ internal static class MacroArgumentParser
             index = close;
         }
         return result.ToString();
+    }
+
+    /// <summary>
+    /// Reads one space-separated line-macro argument starting at <paramref name="index"/>, which
+    /// must be at a non-space character, and leaves the index just past it. A leading brace makes
+    /// the argument run to the matching close brace, and those outer braces are dropped.
+    /// </summary>
+    private static string ReadLineMacroArgument(string text, ref int index)
+    {
+        if (text[index] == '{')
+        {
+            int depth = 0;
+            int start = index;
+            while (index < text.Length)
+            {
+                char c = text[index];
+                if (c == '@' && index + 1 < text.Length)
+                {
+                    //An @-pair is opaque, which is how @{ and the '@' ending a continued line
+                    //stay inside the argument instead of closing or splitting it.
+                    index += 2;
+                    continue;
+                }
+                if (c == '{')
+                {
+                    depth++;
+                }
+                else if (c == '}')
+                {
+                    depth--;
+                    if (depth == 0)
+                    {
+                        string inner = text.Substring(start + 1, index - start - 1);
+                        index++;
+                        return inner;
+                    }
+                }
+                index++;
+            }
+            return text.Substring(start + 1);
+        }
+
+        int begin = index;
+        int braceDepth = 0;
+        while (index < text.Length)
+        {
+            char c = text[index];
+            if (c == '@' && index + 1 < text.Length)
+            {
+                index += 2;
+                continue;
+            }
+            if (c == '{')
+            {
+                braceDepth++;
+            }
+            else if (c == '}')
+            {
+                if (braceDepth > 0)
+                {
+                    braceDepth--;
+                }
+            }
+            else if (braceDepth == 0 && char.IsWhiteSpace(c))
+            {
+                break;
+            }
+            index++;
+        }
+        return text.Substring(begin, index - begin);
+    }
+
+    private static void SkipSpaces(string text, ref int index)
+    {
+        while (index < text.Length && char.IsWhiteSpace(text[index]))
+        {
+            index++;
+        }
     }
 
     private static void SplitAtTopLevelCommas(string text, List<string> arguments, bool unescape)
@@ -196,7 +368,7 @@ internal static class MacroArgumentParser
     {
         for (int i = 0; i < parameters.Count; i++)
         {
-            if (string.Equals(parameters[i], name, System.StringComparison.Ordinal))
+            if (string.Equals(parameters[i], name, StringComparison.Ordinal))
             {
                 return i;
             }

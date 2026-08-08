@@ -31,6 +31,10 @@ h5 { font-size: 1em; margin: 0.9em 0 0.3em 0; }
 h6 { font-size: 0.95em; margin: 0.9em 0 0.3em 0; }
 .texinfo-secnum { font-weight: bold; }
 
+/* Texinfo starts a chapter on a fresh page unless the document says otherwise, which
+   is what @setchapternewpage off turns off. */
+h1.texinfo-chapter, h2.texinfo-chapter { page-break-before: always; }
+
 /* @heading and friends print a heading without creating structure, so they are
    styled to match the sectioning commands but never enter the PDF outline. */
 .texinfo-heading-1 { font-size: 1.5em; font-weight: bold; margin: 1.2em 0 0.5em 0; }
@@ -44,6 +48,9 @@ h6 { font-size: 0.95em; margin: 0.9em 0 0.3em 0; }
 p { margin: 0 0 0.62em 0; text-align: left; }
 p.texinfo-noindent { text-indent: 0; }
 p.texinfo-center { text-align: center; }
+/* @exdent moves one line out to the left of the block indenting it, which is the whole
+   reason the command exists. */
+p.texinfo-exdent { text-indent: 0; margin-left: -1.6em; }
 a { color: #14417a; text-decoration: none; }
 
 /* ----- title page ------------------------------------------------------- */
@@ -72,8 +79,14 @@ pre.texinfo-smallexample { font-size: 0.76em; background-color: #f5f5f2;
                            border: 0.6pt solid #d7d7d0; }
 pre.texinfo-display { padding: 0 0 0 12pt; }
 pre.texinfo-format { padding: 0; }
+/* A displayed equation is set as the text it was written as - there is no mathematical
+   typesetter here - but it is still centred and italic, which is at least the shape a
+   reader expects an equation to have. */
+pre.texinfo-displaymath { padding: 0; font-family: serif; font-style: italic;
+                          text-align: center; }
 pre.texinfo-verbatim { background-color: #f5f5f2; border: 0.6pt solid #d7d7d0; }
 pre.texinfo-lilypond { background-color: #f2f5f2; border: 0.6pt solid #cfd9cf; }
+img.texinfo-lilypond-image { margin: 4pt 0 8pt 0; }
 
 code, samp, kbd { font-family: monospace; font-size: 0.9em; }
 kbd { font-weight: bold; }
@@ -112,6 +125,37 @@ table.texinfo-multitable th { font-weight: bold; background-color: #eeeee8;
                               border: 0.5pt solid #c6c6be; padding: 3pt 5pt; }
 table.texinfo-multitable td { border: 0.5pt solid #c6c6be; padding: 3pt 5pt;
                               vertical-align: top; }
+
+/* ----- definitions ------------------------------------------------------ */
+
+/* A definition is a description list: one term per heading line, one description under
+   them all. The heading line is not set bold as an ordinary dt is - the name inside it
+   is what carries the weight, and a wholly bold prototype is unreadable. */
+dl.texinfo-definition { margin: 0.55em 0 0.8em 0; }
+dl.texinfo-definition dt { font-weight: normal; margin: 0.5em 0 0.15em 0; }
+dl.texinfo-definition dd { margin: 0 0 0.35em 1.6em; }
+.texinfo-def-category { font-style: italic; color: #444440; }
+code.texinfo-def-name { font-weight: bold; }
+.texinfo-def-arg { font-style: italic; }
+code.texinfo-def-arg { font-style: normal; }
+.texinfo-defblock { margin: 0.55em 0 0.8em 0; }
+
+/* ----- floats ----------------------------------------------------------- */
+
+.texinfo-float { margin: 0.7em 0 0.9em 0; }
+.texinfo-float-caption { font-size: 0.92em; margin: 0.3em 0 0.2em 0; }
+.texinfo-listoffloats { margin: 0.4em 0 0.8em 0; }
+.texinfo-listoffloats-entry { margin: 0 0 0.12em 1.2em; }
+
+/* ----- printed index ---------------------------------------------------- */
+
+/* An index has no page numbers to give - the markup cannot know them - so each entry
+   names the section it was written in, which is what tells two identically worded
+   entries apart. */
+.texinfo-index { margin: 0.4em 0 0.8em 0; }
+.texinfo-index-letter { font-size: 1.15em; font-weight: bold; margin: 0.7em 0 0.25em 0; }
+.texinfo-index-entry { margin: 0 0 0.12em 1.2em; }
+.texinfo-index-section { color: #555550; font-size: 0.9em; }
 
 /* ----- footnotes -------------------------------------------------------- */
 

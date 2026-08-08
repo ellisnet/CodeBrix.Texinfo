@@ -3,8 +3,8 @@ using System.Collections.Generic;
 namespace CodeBrix.Texinfo2Html.Preprocessing;
 
 /// <summary>
-/// Settings that govern a <see cref="TexinfoPreprocessor"/> run. The public rendering options
-/// added in later waves map onto this internal type.
+/// Settings that govern a <see cref="TexinfoPreprocessor"/> run. The corresponding options on the
+/// public <see cref="TexinfoHtmlOptions"/> map onto this internal type.
 /// </summary>
 internal sealed class PreprocessorOptions
 {

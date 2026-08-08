@@ -11,11 +11,13 @@ Please update your C#/.NET code and projects to the latest LTS version of Micros
 
 ## Project status
 
-This repository is **under construction**, and the two libraries are at different stages.
+Both libraries are complete and have public APIs — see the samples below.
 
-`CodeBrix.Texinfo2Html` renders Texinfo to HTML and CSS end to end and has a public API — see the sample below. Cross references render as text rather than as links, indices are collected but not yet printed, and `@lilypond` snippets are emitted as their source; those are the next pieces of work.
+`CodeBrix.Texinfo2Html` renders Texinfo to HTML and CSS end to end. It resolves cross references to real links, prints indices, places footnotes at the end of the chapter they belong to, carries a document's pictures along with it, and reads the LilyPond music environments of a `.tely` document so that a renderer you register can engrave them. It expands a document's own macros — `@macro`, `@rmacro` and `@linemacro`, including the ones a manual uses to define new definition commands — which is what lets a real manual work at all. It covers the general-Texinfo commands a GNU manual is built from as well: the `@deffn` definition family, numbered floats and their captions, the full index set including the indices a document defines for itself, and the accent and glyph commands.
 
-`CodeBrix.Texinfo2Pdf` has no public API yet. Until it does, render to HTML and CSS with `CodeBrix.Texinfo2Html` and hand the result to `CodeBrix.PdfDocCreate.Html2Pdf` yourself, as the sample below shows.
+Anything a document uses that these libraries do not implement becomes a warning and the closest readable degradation, never an exception — so the way to find out whether your manual works is to render it and read `result.Warnings`. The whole English LilyPond documentation set renders, as do the GNU Texinfo manual and the GNU Make manual.
+
+`CodeBrix.Texinfo2Pdf` performs the whole conversion in one call, and is the package to install if what you want is a PDF.
 
 ## The two libraries
 
@@ -43,39 +45,94 @@ NuGet package: `CodeBrix.Texinfo2Pdf.MitLicenseForever`
 * The `.tely` Texinfo dialect produced by LilyPond and CodeBrix.LilyPort
 * Rendering Texinfo to HTML and CSS that is ready for PDF generation
 * Producing a finished, nicely-formatted PDF in a single call
+* A seam for engraving `@lilypond` music, so a `.tely` manual can print its music as music
 
 Note that the NuGet package ids carry the `.MitLicenseForever` suffix but the assemblies and namespaces do not — they are simply `CodeBrix.Texinfo2Html` and `CodeBrix.Texinfo2Pdf`. The suffix is a CodeBrix family convention that records the license the packages will always be published under.
 
 ## Sample Code
 
-Render a Texinfo manual to an HTML/CSS pair, then to a PDF:
+Turn a Texinfo manual into a PDF:
 
 ```csharp
-using CodeBrix.PdfDocCreate.Html2Pdf;
-using CodeBrix.Texinfo2Html;
+using CodeBrix.Texinfo2Pdf;
 
-var renderer = new TexinfoHtmlRenderer();
-var result = renderer.GenerateFromFile("manual.texi");
+var renderer = new TexinfoPdfRenderer();
+var result = renderer.RenderFile("manual.texi", "out/manual.pdf");
 
-//manual.html plus manual.css, ready to render or to edit by hand
-var htmlPath = result.WriteToDirectory("out");
-
-new HtmlPdfRenderer().RenderFile(htmlPath, "out/manual.pdf");
-
+Console.WriteLine($"{result.PageCount} pages, {result.Warnings.Count} warnings");
 foreach (var warning in result.Warnings.Messages) { Console.WriteLine(warning); }
 ```
+
+The output directory is created if it is not there, the document's pictures are carried along without your having to place them, and what lands in `out` is one PDF and nothing else. Leave the output path off entirely and the PDF is written beside the source file.
+
+Set the page up, or give the document a running header and footer of your own:
+
+```csharp
+var renderer = new TexinfoPdfRenderer();
+renderer.Options.Html.SetPageSize("a4");
+renderer.Options.Html.FooterText = "Page {page} of {pages}";
+renderer.Options.Texinfo.PredefinedValues["version"] = "2.1";   //as though @set version 2.1
+
+var pdf = renderer.RenderFileToBytes("manual.texi");            //or RenderFile, to disk
+```
+
+`Options.Texinfo` and `Options.Html` are the real option objects of the two libraries underneath, so anything either of them can do is reachable without a second package reference.
 
 Restyle the intermediate before it becomes a PDF:
 
 ```csharp
-var result = new TexinfoHtmlRenderer().GenerateFromFile("manual.texi");
-var myCss = result.Css.Replace("#111111", "#000033");   //or replace it wholesale
-var html = result.ToHtmlDocument(myCss);
+var renderer = new TexinfoPdfRenderer();
+var html = renderer.GenerateHtmlFromFile("manual.texi");
 
-new HtmlPdfRenderer().RenderHtml(html, "out/manual.pdf", result.BaseDirectory);
+//html.BodyHtml, html.Css, html.Title and the document's picture list are all here
+var myCss = html.Css.Replace("#111111", "#000033");   //or replace it wholesale
+
+renderer.RenderHtml(html, "out/manual.pdf", myCss);
 ```
 
-Nothing about a document's contents throws: unsupported, malformed or missing constructs degrade to the nearest readable thing and are reported in `result.Warnings`.
+Or write the pair out, edit the files by hand, and come back in:
+
+```csharp
+var path = html.WriteToDirectory("work");   //work/manual.html plus work/manual.css
+//...edit them...
+renderer.RenderHtmlFile(path, "out/manual.pdf");
+```
+
+Warnings from both halves of the conversion arrive in one list, each tagged with the half that produced it, and split out as `Warnings.TexinfoMessages` and `Warnings.PdfMessages` when you want to tell a problem in the source from a problem in the typesetting.
+
+If all you want is the HTML and CSS, install `CodeBrix.Texinfo2Html` on its own and use `TexinfoHtmlRenderer` directly — it has no dependencies at all beyond .NET:
+
+```csharp
+using CodeBrix.Texinfo2Html;
+
+var result = new TexinfoHtmlRenderer().GenerateFromFile("manual.texi");
+var htmlPath = result.WriteToDirectory("out");   //manual.html, manual.css, and the pictures
+```
+
+Engrave the music of a `.tely` manual. Without a renderer registered, every `@lilypond` snippet is shown as its source text — this library will not take on a dependency on LilyPond, so it defines the seam and leaves the engraving to a consumer who already has an engraver:
+
+```csharp
+public sealed class MyEngraver : ILilypondSnippetRenderer
+{
+    public LilypondSnippetResult Render(LilypondSnippet snippet)
+    {
+        //snippet.Source (or snippet.FilePath), plus snippet.Options.Relative,
+        //.Fragment, .RaggedRight, .LineWidth, .StaffSize and the rest
+        byte[] png = MyLilypond.Engrave(snippet);
+        return LilypondSnippetResult.FromContent(png, "png");
+    }
+}
+
+var renderer = new TexinfoPdfRenderer();
+renderer.Options.Texinfo.SnippetRenderer = new MyEngraver();
+
+//the engraved pictures travel with the document, exactly as @image pictures do
+renderer.RenderFile("notation.tely", "out/notation.pdf");
+```
+
+An identical snippet is engraved once and the picture reused, so a manual that repeats a snippet does not pay for it twice. Return `LilypondSnippetResult.NotRendered` to decline one quietly, or `LilypondSnippetResult.Failed("...")` to report why it could not be done.
+
+Nothing about a document's contents throws: unsupported, malformed or missing constructs degrade to the nearest readable thing and are reported in `result.Warnings`. That includes an exception escaping your own snippet renderer.
 
 ## License
 

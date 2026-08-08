@@ -7,11 +7,10 @@ using Xunit;
 
 namespace CodeBrix.Texinfo2Pdf.Tests;
 
-//The CodeBrix.Texinfo2Pdf library has no public API yet - this repository is
-//currently a scaffold. These tests exercise the packaging and assembly wiring
-//that the scaffold does establish - including the project reference to
-//CodeBrix.Texinfo2Html and the package reference to CodeBrix.PdfDocCreate.Html2Pdf
-//- so the suite is green and meaningful until the conversion functionality lands.
+//The packaging and assembly wiring of CodeBrix.Texinfo2Pdf: that it loads, that its version
+//follows the family's date-stamped scheme, that the test project can see its internals, and that
+//both libraries it composes - CodeBrix.Texinfo2Html through a project reference, and
+//CodeBrix.PdfDocCreate.Html2Pdf through a package reference - really do arrive with it.
 public class LibraryPackagingSmoke
 {
     private const string LibraryAssemblyName = "CodeBrix.Texinfo2Pdf";
@@ -55,6 +54,27 @@ public class LibraryPackagingSmoke
 
         //Assert
         friends.Should().Contain(TestAssemblyName);
+    }
+
+    [Fact]
+    public void the_public_surface_is_the_four_types_the_documentation_describes()
+    {
+        //Arrange - the composition layer is meant to be small, and a helper that drifts into
+        //public is a promise nobody meant to make. The staging area is internal on purpose.
+        Assembly assembly = Assembly.Load(new AssemblyName(LibraryAssemblyName));
+
+        //Act
+        string[] publicTypes = assembly.GetExportedTypes().Select(t => t.FullName).OrderBy(n => n)
+            .ToArray();
+
+        //Assert
+        publicTypes.Should().BeEquivalentTo(new[]
+        {
+            "CodeBrix.Texinfo2Pdf.TexinfoPdfOptions",
+            "CodeBrix.Texinfo2Pdf.TexinfoPdfRenderer",
+            "CodeBrix.Texinfo2Pdf.TexinfoPdfResult",
+            "CodeBrix.Texinfo2Pdf.TexinfoPdfWarnings"
+        });
     }
 
     [Fact]

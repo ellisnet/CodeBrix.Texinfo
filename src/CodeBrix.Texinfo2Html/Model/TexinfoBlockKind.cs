@@ -46,6 +46,9 @@ internal enum TexinfoBlockKind
     /// <summary><c>@documentdescription</c> - a description recorded for output metadata.</summary>
     DocumentDescription,
 
+    /// <summary><c>@defblock</c> - a group of definitions written with <c>@defline</c>.</summary>
+    DefinitionBlock,
+
     /// <summary><c>@example</c> - preformatted text in a fixed-width font.</summary>
     Example,
 
@@ -66,6 +69,12 @@ internal enum TexinfoBlockKind
 
     /// <summary><c>@format</c> - preformatted text with no indentation.</summary>
     Format,
+
+    /// <summary>
+    /// <c>@displaymath</c> - a displayed mathematical expression, degraded to preformatted text
+    /// for the same reason <c>@math</c> is: there is no mathematical typesetter here.
+    /// </summary>
+    DisplayMath,
 
     /// <summary><c>@smallformat</c> - format text in a smaller font.</summary>
     SmallFormat

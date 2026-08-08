@@ -9,7 +9,7 @@ using Xunit;
 namespace CodeBrix.Texinfo2Html.Tests;
 
 /// <summary>
-/// Wave 1 corpus gate: LilyPond's macros.itexi and common-macros.itexi (read locally from
+/// The macro engine's corpus gate: LilyPond's macros.itexi and common-macros.itexi (read locally from
 /// ~/GitHome/lilypond, never committed) must expand correctly under the Print profile. These
 /// tests skip cleanly when the corpus is not present on the machine.
 /// </summary>

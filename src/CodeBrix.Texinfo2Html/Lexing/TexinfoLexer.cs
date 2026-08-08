@@ -44,8 +44,12 @@ internal sealed class TexinfoLexer
            || MusicBlocks.Contains(name)
            || name == "verbatim"
            || name == "ignore"
-           || name == "macro"
-           || name == "rmacro";
+           || IsMacroDefinitionCommand(name);
+
+    /// <summary>True for the three commands that open a macro definition body.</summary>
+    /// <param name="name">The command name without <c>@</c>.</param>
+    public static bool IsMacroDefinitionCommand(string name)
+        => name == "macro" || name == "rmacro" || name == "linemacro";
 
     /// <summary>Tokenizes the whole source and returns the tokens, ending with EndOfInput.</summary>
     public List<TexinfoToken> Lex()
@@ -175,6 +179,12 @@ internal sealed class TexinfoLexer
             return;
         }
 
+        if (name == "verb")
+        {
+            LexVerb(tokens, start, atLineStart);
+            return;
+        }
+
         if (MusicBlocks.Contains(name))
         {
             LexMusicBlock(tokens, start, atLineStart, name);
@@ -269,7 +279,7 @@ internal sealed class TexinfoLexer
         {
             Advance();
         }
-        bool macroFamily = name == "macro" || name == "rmacro";
+        bool macroFamily = IsMacroDefinitionCommand(name);
         string content = CaptureBlockBody(name, macroFamily, name == "ignore", start);
         tokens.Add(new TexinfoToken(TexinfoTokenKind.RawBlock, name, start, atLineStart: true)
         {
@@ -294,7 +304,7 @@ internal sealed class TexinfoLexer
             string line = _text.Substring(lineBegin, lineEnd - lineBegin).Trim();
 
             bool isTerminator = macroFamily
-                ? IsEndLine(line, "macro") || IsEndLine(line, "rmacro")
+                ? IsEndLine(line, "macro") || IsEndLine(line, "rmacro") || IsEndLine(line, "linemacro")
                 : IsEndLine(line, name);
             if (isTerminator)
             {
@@ -306,7 +316,8 @@ internal sealed class TexinfoLexer
                 }
                 depth--;
             }
-            else if (macroFamily && (IsOpenerLine(line, "macro") || IsOpenerLine(line, "rmacro")))
+            else if (macroFamily && (IsOpenerLine(line, "macro") || IsOpenerLine(line, "rmacro")
+                                     || IsOpenerLine(line, "linemacro")))
             {
                 depth++;
             }
@@ -373,6 +384,66 @@ internal sealed class TexinfoLexer
         _index = savedIndex;
         _line = savedLine;
         _column = savedColumn;
+    }
+
+    /// <summary>
+    /// Captures <c>@verb{&lt;delimiter&gt;text&lt;delimiter&gt;}</c>. The character straight after the
+    /// brace is the delimiter the author chose, and the text runs to the next occurrence of that
+    /// delimiter followed by the closing brace. Nothing between them is Texinfo - that is the whole
+    /// point of the command - so it is captured here, where no later stage can tokenize it.
+    /// </summary>
+    private void LexVerb(List<TexinfoToken> tokens, SourcePosition start, bool atLineStart)
+    {
+        if (_index >= _text.Length || _text[_index] != '{')
+        {
+            _warnings.Add(TexinfoWarningCategory.Syntax, start,
+                "'@verb' is not followed by a brace group; treating it as a plain command.");
+            tokens.Add(new TexinfoToken(TexinfoTokenKind.Command, "verb", start, atLineStart));
+            _lineHasContent = true;
+            return;
+        }
+        Advance();
+        if (_index >= _text.Length || _text[_index] == '}')
+        {
+            _warnings.Add(TexinfoWarningCategory.Syntax, start,
+                "'@verb' has no delimiter character after its opening brace; it produced nothing.");
+            if (_index < _text.Length)
+            {
+                Advance();
+            }
+            tokens.Add(new TexinfoToken(TexinfoTokenKind.RawBlock, "verb", start, atLineStart)
+            {
+                IsBraceRawBlock = true
+            });
+            _lineHasContent = true;
+            return;
+        }
+
+        char delimiter = _text[_index];
+        Advance();
+        int contentBegin = _index;
+        string terminator = delimiter.ToString() + "}";
+        int end = _text.IndexOf(terminator, _index, StringComparison.Ordinal);
+        string content;
+        if (end < 0)
+        {
+            _warnings.Add(TexinfoWarningCategory.Syntax, start,
+                $"'@verb' is missing its closing '{terminator}'; the rest of the file was taken as its text.");
+            content = _text.Substring(contentBegin);
+            AdvanceTo(_text.Length);
+        }
+        else
+        {
+            content = _text.Substring(contentBegin, end - contentBegin);
+            AdvanceTo(end + terminator.Length);
+        }
+        tokens.Add(new TexinfoToken(TexinfoTokenKind.RawBlock, "verb", start, atLineStart)
+        {
+            RawArgument = delimiter.ToString(),
+            RawContent = content,
+            IsBraceRawBlock = true
+        });
+        _lineHasContent = true;
     }
 
     private void LexMusicBlock(List<TexinfoToken> tokens, SourcePosition start, bool atLineStart, string name)

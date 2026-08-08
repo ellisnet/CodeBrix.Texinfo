@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
@@ -24,7 +25,11 @@ internal sealed class DocumentSemantics
     private readonly List<TableOfContentsEntry> _shortContents = new List<TableOfContentsEntry>();
     private readonly Dictionary<FootnoteNode, string> _footnoteIds =
         new Dictionary<FootnoteNode, string>();
+    private readonly Dictionary<SectionNode, List<FootnoteNode>> _footnotesBySection =
+        new Dictionary<SectionNode, List<FootnoteNode>>();
+    private readonly List<FootnoteNode> _trailingFootnotes = new List<FootnoteNode>();
     private readonly TexinfoDocument _document;
+    private IndexBuilder _indexes;
     private readonly bool _numberSections;
     private int _chapterCounter;
     private int _appendixCounter;
@@ -64,6 +69,38 @@ internal sealed class DocumentSemantics
         => _footnoteIds.TryGetValue(footnote, out string id) ? id : string.Empty;
 
     /// <summary>
+    /// The footnotes belonging to one sectioning unit, printed at the end of it. Empty for a unit
+    /// that hosts none.
+    /// </summary>
+    /// <param name="section">The sectioning unit to look up.</param>
+    public IReadOnlyList<FootnoteNode> FootnotesFor(SectionNode section)
+        => _footnotesBySection.TryGetValue(section, out List<FootnoteNode> notes)
+            ? notes
+            : Array.Empty<FootnoteNode>();
+
+    /// <summary>
+    /// The footnotes no sectioning unit hosts - those written in the front matter, or in a document
+    /// with no sectioning at all. They are printed at the end of the document.
+    /// </summary>
+    public IReadOnlyList<FootnoteNode> TrailingFootnotes => _trailingFootnotes;
+
+    /// <summary>
+    /// Looks up a printed index by the name <c>@printindex</c> gave, or null when the document
+    /// never asks to print an index of that name.
+    /// </summary>
+    /// <param name="name">The two-letter index name.</param>
+    public PrintedIndex IndexNamed(string name)
+        => name != null && _indexes.Indexes.TryGetValue(name, out PrintedIndex index) ? index : null;
+
+    /// <summary>
+    /// Looks up the identifier of the marker a printed index links back to, or an empty string for
+    /// an entry that no printed index contains.
+    /// </summary>
+    /// <param name="entry">The index entry to look up.</param>
+    public string IndexEntryIdFor(IndexEntryNode entry)
+        => entry != null && _indexes.EntryIds.TryGetValue(entry, out string id) ? id : string.Empty;
+
+    /// <summary>
     /// Looks up the identifier a cross reference to the given Texinfo name should target, or an
     /// empty string when the document defines no such destination.
     /// </summary>
@@ -73,13 +110,163 @@ internal sealed class DocumentSemantics
             ? anchor.ElementId
             : string.Empty;
 
+    /// <summary>
+    /// How a cross reference to the given name reads when the document supplies no wording of its
+    /// own. Only a float answers: "see Figure 1.2" is what its number is for, and a label such as
+    /// <c>fig:staff-sizes</c> would tell a reader nothing. Empty for every other destination, whose
+    /// own node name is already the right words.
+    /// </summary>
+    /// <param name="name">A <c>@float</c> label.</param>
+    public string ReferenceTextFor(string name)
+        => name != null && _document.Anchors.TryGetValue(name, out TexinfoAnchor anchor)
+           && anchor.Target is FloatNode target
+            ? target.ReferenceText
+            : string.Empty;
+
+    /// <summary>
+    /// The document's floats of one type, in the order they were written - what
+    /// <c>@listoffloats</c> prints. An empty type name asks for every float.
+    /// </summary>
+    /// <param name="typeName">The float type, such as "Figure".</param>
+    public IReadOnlyList<FloatNode> FloatsOfType(string typeName)
+    {
+        List<FloatNode> found = new List<FloatNode>();
+        foreach (FloatNode node in _document.Floats)
+        {
+            if (typeName.Length == 0
+                || string.Equals(node.TypeName, typeName, StringComparison.OrdinalIgnoreCase))
+            {
+                found.Add(node);
+            }
+        }
+        return found;
+    }
+
     private void Run()
     {
         NumberAndIdentify(_document.Sections, string.Empty, depth: 0);
+        NumberFloats();
         AssignRemainingAnchorIds();
         AssignFootnoteIds();
+        PlaceFootnotes();
+        _indexes = new IndexBuilder(_document, _allocator);
+        _indexes.Build();
         BuildContents(_document.Sections, depth: 0);
         FindTitlePage();
+    }
+
+    /// <summary>
+    /// Works out where each footnote's text is printed. A printed manual puts its notes at the end
+    /// of the chapter they were written in, so each footnote is filed under the outermost
+    /// sectioning unit that contains it - skipping <c>@top</c> and <c>@part</c>, which are wrappers
+    /// around chapters rather than chapters themselves.
+    /// </summary>
+    private void PlaceFootnotes()
+    {
+        HashSet<FootnoteNode> hosted = new HashSet<FootnoteNode>();
+        foreach (SectionNode section in _document.Sections)
+        {
+            FindFootnoteHosts(section, hosted);
+        }
+        foreach (FootnoteNode footnote in _document.Footnotes)
+        {
+            if (!hosted.Contains(footnote))
+            {
+                _trailingFootnotes.Add(footnote);
+            }
+        }
+    }
+
+    private void FindFootnoteHosts(SectionNode section, HashSet<FootnoteNode> hosted)
+    {
+        if (section.Kind == SectionKind.Top || section.Kind == SectionKind.Part)
+        {
+            foreach (SectionNode child in section.Children)
+            {
+                FindFootnoteHosts(child, hosted);
+            }
+            return;
+        }
+        List<FootnoteNode> notes = new List<FootnoteNode>();
+        foreach (TexinfoNode node in section.DescendantNodes())
+        {
+            if (node is FootnoteNode footnote && hosted.Add(footnote))
+            {
+                notes.Add(footnote);
+            }
+        }
+        if (notes.Count > 0)
+        {
+            _footnotesBySection[section] = notes;
+        }
+    }
+
+    /// <summary>
+    /// Numbers the document's floats. A float is numbered within its chapter and within its own
+    /// type, so a manual counts "Figure 1.1, Figure 1.2, Table 1.1" and starts again at "Figure
+    /// 2.1" in the next chapter. A float whose chapter carries no number - and one written before
+    /// any chapter at all - has no stem to hang that on, so it counts straight through the document
+    /// instead.
+    /// </summary>
+    private void NumberFloats()
+    {
+        if (_document.Floats.Count == 0)
+        {
+            return;
+        }
+        Dictionary<string, int> documentCounters =
+            new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        HashSet<FloatNode> numbered = new HashSet<FloatNode>();
+        NumberFloatsInChapters(_document.Sections, documentCounters, numbered);
+        foreach (FloatNode node in _document.Floats)
+        {
+            if (numbered.Add(node))
+            {
+                node.Number = NextFloatCount(documentCounters, node.TypeName)
+                    .ToString(CultureInfo.InvariantCulture);
+            }
+        }
+    }
+
+    private void NumberFloatsInChapters(IReadOnlyList<SectionNode> sections,
+        Dictionary<string, int> documentCounters, HashSet<FloatNode> numbered)
+    {
+        foreach (SectionNode section in sections)
+        {
+            //@top and @part group chapters rather than being one, so they are passed through: the
+            //counters restart at the chapter, which is what supplies the number they build on.
+            if (section.Kind == SectionKind.Top || section.Kind == SectionKind.Part)
+            {
+                NumberFloatsInChapters(section.Children, documentCounters, numbered);
+                continue;
+            }
+            Dictionary<string, int> chapterCounters =
+                new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            foreach (TexinfoNode node in section.DescendantNodes())
+            {
+                if (!(node is FloatNode target) || !numbered.Add(target))
+                {
+                    continue;
+                }
+                target.Number = section.Number.Length > 0
+                    ? section.Number + "."
+                      + NextFloatCount(chapterCounters, target.TypeName)
+                          .ToString(CultureInfo.InvariantCulture)
+                    : NextFloatCount(documentCounters, target.TypeName)
+                        .ToString(CultureInfo.InvariantCulture);
+            }
+        }
+    }
+
+    private static int NextFloatCount(Dictionary<string, int> counters, string typeName)
+    {
+        //Floats of different types count separately, and the ones the source gave no type share a
+        //counter of their own rather than joining any of them.
+        string key = typeName.Length == 0 ? " untyped" : typeName;
+        counters.TryGetValue(key, out int count);
+        count++;
+        counters[key] = count;
+        return count;
     }
 
     private void FindTitlePage()
@@ -169,6 +356,7 @@ internal sealed class DocumentSemantics
             {
                 AnchorNode anchorNode => anchorNode.Name,
                 NodeAnchorNode nodeAnchor => nodeAnchor.NodeName,
+                FloatNode floatNode => floatNode.Label,
                 _ => null
             };
             if (name == null || !_document.Anchors.TryGetValue(name, out TexinfoAnchor anchor))

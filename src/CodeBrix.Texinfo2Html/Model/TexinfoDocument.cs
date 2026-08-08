@@ -22,6 +22,13 @@ internal sealed class TexinfoDocument
     /// <summary>The document title from <c>@settitle</c>; empty when none was given.</summary>
     public string Title { get; set; } = string.Empty;
 
+    /// <summary>
+    /// The author named by the first <c>@author</c> of the title page; empty when none was given.
+    /// A title page may name several authors, and only the first is recorded here, because this
+    /// exists to fill the one author field a PDF's metadata has room for.
+    /// </summary>
+    public string Author { get; set; } = string.Empty;
+
     /// <summary>The language from <c>@documentlanguage</c>; empty when none was given.</summary>
     public string Language { get; set; } = string.Empty;
 
@@ -53,12 +60,32 @@ internal sealed class TexinfoDocument
     /// <summary>The index merges requested by <c>@syncodeindex</c> and <c>@synindex</c>.</summary>
     public List<IndexMerge> IndexMerges { get; } = new List<IndexMerge>();
 
+    /// <summary>Every <c>@float</c> in the document, in the order it was written.</summary>
+    public List<FloatNode> Floats { get; } = new List<FloatNode>();
+
+    /// <summary>
+    /// The indices a <c>@defcodeindex</c> asked to be printed in a fixed-width font. The six
+    /// predefined indices are not listed here - the index builder already knows which of those set
+    /// their entries in code - so this holds only what the document itself defined.
+    /// </summary>
+    public HashSet<string> CodeIndexNames { get; } = new HashSet<string>(StringComparer.Ordinal);
+
     /// <summary>
     /// Document settings that are recorded but do not affect parsing, such as
     /// <c>@setchapternewpage</c> or <c>@paragraphindent</c>, keyed by command name without
     /// <c>@</c>. The emitter honors the ones it can and ignores the rest.
     /// </summary>
     public Dictionary<string, string> Settings { get; } =
+        new Dictionary<string, string>(StringComparer.Ordinal);
+
+    /// <summary>
+    /// The <c>@set</c> flags that were still set when the source ended, as the preprocessor left
+    /// them. Most are the document's own variables, read through <c>@value</c> long before this
+    /// point; the ones that matter here are Texinfo's <c>txi</c> settings, which ask later passes
+    /// to behave differently - <c>txiindexbackslashignore</c> and its siblings change how index
+    /// entries sort.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> Values { get; set; } =
         new Dictionary<string, string>(StringComparer.Ordinal);
 
     /// <summary>Every warning collected while lexing, preprocessing and parsing, in order.</summary>
