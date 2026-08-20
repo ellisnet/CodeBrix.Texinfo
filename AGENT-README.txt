@@ -365,10 +365,13 @@ IMAGES
 --------------------------------------------------------------------------------
 
 An @image reference names a file with no directory and usually no extension, so
-the file is searched for and its extension probed (.png .jpg .jpeg .gif .bmp
-.svg, plus any extension the command declares). Do NOT add .pdf to that probe:
-a manual that keeps pdf/NAME variants for its TeX branch would then hand
-Html2Pdf a file it cannot decode.
+the file is searched for and its extension probed - every format the PDF stage
+can place (.png .jpg .jpeg .gif .bmp .svg .webp .tif .tiff .tga .ppm .pgm .pbm,
+plus any extension the command declares). SVG pictures are rasterized by
+Html2Pdf itself, identically on every operating system; the bitmap formats are
+decoded by CodeBrix.Imaging with transparency preserved. Do NOT add .pdf to
+that probe: a manual that keeps pdf/NAME variants for its TeX branch would then
+hand Html2Pdf a file it cannot decode.
 
 What the markup writes is NOT where the file was found. It is a path relative
 to the document itself - <ImageFolderName>/<file> - so the generated document
@@ -530,7 +533,7 @@ pictures, and it is the thing CodeBrix.Texinfo2Pdf takes care of.
 CORE API REFERENCE - CodeBrix.Texinfo2Pdf
 --------------------------------------------------------------------------------
 
-Four public types, all in the CodeBrix.Texinfo2Pdf namespace.
+Five public types, all in the CodeBrix.Texinfo2Pdf namespace.
 
 --- TexinfoPdfRenderer ---
 
@@ -580,6 +583,11 @@ is reachable without a second package reference and without anything here having
 to be kept in step. Do not "improve" this into a copy: the drift is the bug it
 was written to avoid.
 
+Because Html is the live object, everything Html2Pdf exposes is settable here -
+for example Html.SvgRasterScale (SVG picture sharpness, default 2.0) and
+Html.KeepUncoveredCharacters (keep characters no registered font covers as
+visible missing-glyph shapes instead of removing them).
+
 Two defaults differ from bare Html2Pdf, because a printed manual wants them:
 
     Html.HeaderText = "{title}"
@@ -617,6 +625,30 @@ A message means a different thing depending on which stage said it - the Texinfo
 stage is talking about the source, the PDF stage about the markup or the fonts -
 so filter on the split lists rather than pattern-matching the merged one. The
 Texinfo stage ran first and is listed first.
+
+--- TexinfoPdfFonts ---
+
+Font registration for the PDF stage, forwarded to the Html2Pdf font registry so
+a consumer of this package never has to name Html2Pdf. Registration is
+process-global; all methods are idempotent and may be called before or after
+renders have happened - additions take effect on the next render.
+
+    TexinfoPdfFonts.AddFontDirectory(dir)      //package-shaped font folders
+    TexinfoPdfFonts.AddFontFile(path, includeInFallback = false)
+    TexinfoPdfFonts.AddFontFiles(paths, includeInFallback = false)
+    TexinfoPdfFonts.AddFontFilesFromDirectory(dir, includeInFallback = false)
+    TexinfoPdfFonts.AddFallbackFamily(name)
+
+The AddFontFile family takes loose .ttf/.otf files with NO manifest - family
+name, weight and style are read from the font's own tables - and either path
+separator style works on every operating system. A registered font is usable
+from the generated markup's font families, from SVG text inside placed
+pictures, and (when opted in) from the per-glyph fallback chain consulted for
+characters the styled font lacks. The PDF stage already brings the Roboto,
+Merriweather, Roboto Mono and Noto Music packages along; Noto Music sits in the
+fallback chain automatically, which is what renders a manual's ♭ ♮ ♯ and the
+supplementary-plane music symbols. The PDF stage never falls back to
+operating-system fonts.
 
 --- The two workflows ---
 
@@ -812,9 +844,10 @@ and skip cleanly when it is absent:
       CodeBrix.Texinfo2Pdf API rather than through a chain the test assembles,
       so it gates what a consumer actually gets - keep it that way. It also
       holds the glyph coverage check: no character in a script the
-      CodeBrix.Platform.Fonts packages cover may be dropped from a PDF. What the
-      corpus does drop is the two musical accidental signs and a Hebrew lyric
-      quoted inside a snippet - no text font carries either, and CodeBrix never
+      CodeBrix.Platform.Fonts packages cover may be dropped from a PDF. The
+      musical accidental signs render through the Noto Music fallback family,
+      so the only thing the corpus drops is a Hebrew lyric quoted inside a
+      snippet - no registered font carries that script, and CodeBrix never
       falls back to a system font. It leaves the PDFs it built in
       <temp>/codebrix-texinfo-gate so they can be looked at afterwards.
 

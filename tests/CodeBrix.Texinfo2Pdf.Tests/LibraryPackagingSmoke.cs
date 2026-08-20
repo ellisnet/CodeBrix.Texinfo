@@ -57,7 +57,7 @@ public class LibraryPackagingSmoke
     }
 
     [Fact]
-    public void the_public_surface_is_the_four_types_the_documentation_describes()
+    public void the_public_surface_is_the_five_types_the_documentation_describes()
     {
         //Arrange - the composition layer is meant to be small, and a helper that drifts into
         //public is a promise nobody meant to make. The staging area is internal on purpose.
@@ -70,6 +70,7 @@ public class LibraryPackagingSmoke
         //Assert
         publicTypes.Should().BeEquivalentTo(new[]
         {
+            "CodeBrix.Texinfo2Pdf.TexinfoPdfFonts",
             "CodeBrix.Texinfo2Pdf.TexinfoPdfOptions",
             "CodeBrix.Texinfo2Pdf.TexinfoPdfRenderer",
             "CodeBrix.Texinfo2Pdf.TexinfoPdfResult",

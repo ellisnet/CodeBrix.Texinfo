@@ -124,8 +124,9 @@ public class TexinfoToPdfGateTests
         TexinfoPdfResult pdf = RenderManual(manualFileName);
 
         //Assert - the characters Html2Pdf dropped may only be ones no package font carries. The
-        //two manuals between them drop the musical accidental signs and a Hebrew lyric written
-        //into a snippet; a Latin, Greek or Cyrillic character here would be a real fault.
+        //musical accidental signs render from the Noto Music fallback family now, so what the two
+        //manuals drop between them is a Hebrew lyric written into a snippet; a Latin, Greek or
+        //Cyrillic character here would be a real fault.
         string lost = string.Join(", ", DroppedCodePoints(pdf.Warnings.PdfMessages)
             .Where(IsCoveredByThePackageFonts)
             .Select(c => "U+" + c.ToString("X4", CultureInfo.InvariantCulture)));
@@ -148,9 +149,9 @@ public class TexinfoToPdfGateTests
         pdf.Intermediate.BodyHtml.Any(c => c >= 0x00C0 && c <= 0x024F).Should().BeTrue();
         pdf.Intermediate.BodyHtml.Contains('—').Should().BeTrue();
         pdf.Intermediate.BodyHtml.Contains('’').Should().BeTrue();
-        //Only the two musical accidental signs are outside the package fonts.
-        DroppedCodePoints(pdf.Warnings.PdfMessages).OrderBy(c => c).Should()
-            .BeEquivalentTo(new[] { 0x266D, 0x266F });
+        //The manual's musical accidental signs render from the Noto Music fallback family, so
+        //nothing at all is dropped from this manual any more.
+        DroppedCodePoints(pdf.Warnings.PdfMessages).Should().BeEmpty();
     }
 
     [Fact]
