@@ -78,7 +78,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="CodeBrix.PdfDocCreate.Html2Pdf.MitLicenseForever" Version="1.0.217.117" />
+    <PackageReference Include="CodeBrix.PdfDocCreate.Html2Pdf.MitLicenseForever" Version="1.0.232.60" />
   </ItemGroup>
 
   <ItemGroup>
