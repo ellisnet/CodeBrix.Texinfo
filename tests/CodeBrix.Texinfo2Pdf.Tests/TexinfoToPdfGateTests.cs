@@ -176,8 +176,20 @@ public class TexinfoToPdfGateTests
         foreach (string message in messages)
         {
             int index = message.IndexOf("U+", StringComparison.Ordinal);
-            if (index >= 0 && int.TryParse(message.AsSpan(index + 2, 4), NumberStyles.HexNumber,
-                CultureInfo.InvariantCulture, out int codePoint))
+            if (index < 0)
+            {
+                continue;
+            }
+            //Take every hex digit that follows: a supplementary-plane code point prints
+            //as five or six digits, not four.
+            int start = index + 2;
+            int end = start;
+            while (end < message.Length && Uri.IsHexDigit(message[end]))
+            {
+                end++;
+            }
+            if (end > start && int.TryParse(message.AsSpan(start, end - start),
+                NumberStyles.HexNumber, CultureInfo.InvariantCulture, out int codePoint))
             {
                 yield return codePoint;
             }

@@ -124,10 +124,30 @@ public class PdfFeaturePassThroughTests
         TexinfoPdfResult pdf = renderer.RenderTexinfoToBytes(Manual("Prose with א kept as tofu."));
 
         //Assert - with the opt-in set, the uncovered character is kept (and reported
-        //as kept) rather than removed.
+        //as kept) rather than removed; the structured item says so by code.
         pdf.PdfBytes.Should().NotBeNull();
-        pdf.Warnings.PdfMessages.Any(m => m.Contains("missing-glyph")).Should().BeTrue();
-        pdf.Warnings.PdfMessages.Any(m => m.Contains("removed")).Should().BeFalse();
+        pdf.Warnings.PdfItems.Any(i => i.Code == "font.uncovered.kept" && i.CodePoint == 0x05D0)
+            .Should().BeTrue();
+        pdf.Warnings.PdfItems.Any(i => i.Code == "font.uncovered.removed").Should().BeFalse();
+    }
+
+    [Fact]
+    public void Structured_pdf_warnings_carry_code_code_point_and_occurrences()
+    {
+        //Arrange - a drop baseline must be assertable as distinct code points AND
+        //occurrence counts, which display prose cannot carry: the same shin twice and
+        //one alef, in a script no registered font covers.
+        string body = "Uncovered: ש then א then ש again.";
+
+        //Act
+        TexinfoPdfResult pdf = new TexinfoPdfRenderer().RenderTexinfoToBytes(Manual(body));
+
+        //Assert
+        var drops = pdf.Warnings.PdfItems
+            .Where(i => i.Code == "font.uncovered.removed")
+            .ToList();
+        drops.Single(i => i.CodePoint == 0x05E9).Occurrences.Should().Be(2);
+        drops.Single(i => i.CodePoint == 0x05D0).Occurrences.Should().Be(1);
     }
 
     [Fact]

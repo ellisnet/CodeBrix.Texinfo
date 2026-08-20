@@ -614,12 +614,24 @@ list without running the source twice.
 
 --- TexinfoPdfWarnings ---
 
-    IReadOnlyList<string> Messages         //both stages, each tagged
-    IReadOnlyList<string> TexinfoMessages  //untagged, as Texinfo2Html wrote them
-    IReadOnlyList<string> PdfMessages      //untagged, as Html2Pdf wrote them
-    int                   Count
-    const string          TexinfoStageTag = "[texinfo]"
-    const string          PdfStageTag     = "[pdf]"
+    IReadOnlyList<string>        Messages         //both stages, each tagged
+    IReadOnlyList<string>        TexinfoMessages  //untagged, as Texinfo2Html wrote them
+    IReadOnlyList<string>        PdfMessages      //untagged, as Html2Pdf wrote them
+    IReadOnlyList<RenderWarning> PdfItems         //the PDF stage's structured warnings
+    int                          Count
+    const string                 TexinfoStageTag = "[texinfo]"
+    const string                 PdfStageTag     = "[pdf]"
+
+PdfItems is the PDF stage's warnings in structured form - each item carries a
+Category enum, a stable machine-readable Code ("font.uncovered.removed",
+"font.svg-text.notdef", "image.format.unsupported", ...), an Occurrences count,
+and - for glyph-coverage warnings - the CodePoint involved. Items are finer-
+grained than the prose: warnings sharing one display message but concerning
+different code points are separate items. That is what lets a test assert an
+exact drop baseline ("these N distinct code points, M occurrences") instead of
+pattern-matching display prose, which is not a compatibility surface. The
+Texinfo stage has no structured form; filter TexinfoMessages by its leading
+category word instead.
 
 A message means a different thing depending on which stage said it - the Texinfo
 stage is talking about the source, the PDF stage about the markup or the fonts -

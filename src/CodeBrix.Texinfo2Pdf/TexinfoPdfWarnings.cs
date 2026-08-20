@@ -23,9 +23,12 @@ public sealed class TexinfoPdfWarnings
     /// <summary>The tag on every message that came from rendering the markup to a PDF.</summary>
     public const string PdfStageTag = "[pdf]";
 
+    private static readonly IReadOnlyList<RenderWarning> NoPdfItems = new List<RenderWarning>();
+
     private readonly List<string> _messages = new List<string>();
     private readonly List<string> _texinfoMessages = new List<string>();
     private readonly List<string> _pdfMessages = new List<string>();
+    private readonly IReadOnlyList<RenderWarning> _pdfItems;
 
     internal TexinfoPdfWarnings(TexinfoRenderWarnings texinfo, RenderWarnings pdf)
     {
@@ -47,6 +50,7 @@ public sealed class TexinfoPdfWarnings
                 _messages.Add(PdfStageTag + " " + message);
             }
         }
+        _pdfItems = pdf != null ? pdf.Items : NoPdfItems;
     }
 
     /// <summary>
@@ -70,6 +74,18 @@ public sealed class TexinfoPdfWarnings
     /// ones.
     /// </summary>
     public IReadOnlyList<string> PdfMessages => _pdfMessages;
+
+    /// <summary>
+    /// The PDF stage's warnings in structured form: each item carries a category, a
+    /// stable machine-readable code (e.g. <c>font.uncovered.removed</c>,
+    /// <c>font.svg-text.notdef</c>), an occurrence count, and - for glyph-coverage
+    /// warnings - the code point involved. Warnings sharing one display message but
+    /// concerning different code points are separate items, so a test can assert an
+    /// exact drop baseline (distinct code points AND occurrences) without matching
+    /// display prose. The Texinfo stage has no structured form; filter its
+    /// <see cref="TexinfoMessages"/> by their leading category instead.
+    /// </summary>
+    public IReadOnlyList<RenderWarning> PdfItems => _pdfItems;
 
     /// <summary>How many messages there are in total, across both stages.</summary>
     public int Count => _messages.Count;
