@@ -78,7 +78,23 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="CodeBrix.PdfDocCreate.Html2Pdf.MitLicenseForever" Version="1.0.232.60" />
+    <PackageReference Include="CodeBrix.PdfDocCreate.Html2Pdf.MitLicenseForever" Version="1.0.232.1177" />
+    <!--
+      IMPORTANT NOTE: CodeBrix.Texinfo2Pdf *cannot* have a declared dependency on
+      SkiaSharp.NativeAssets.Linux or SkiaSharp.NativeAssets.Linux.NoDependencies - even though
+      it *does* require one of these, when running on Linux and the Texinfo source embeds SVG
+      images. The requirement is inherited from CodeBrix.PdfDocCreate.Html2Pdf, which
+      deliberately does not declare it either.
+      Two mutually exclusive Linux native-assets variants exist and only the consuming
+      application can choose between them; declaring one here would force that choice on every
+      consumer of the CodeBrix.Texinfo2Pdf.MitLicenseForever nuget package and conflict with
+      applications that already reference the other variant.
+      So, for the CodeBrix.Texinfo2Pdf.MitLicenseForever nuget package to render SVG content on
+      Linux, the consuming application *must* have its own dependency on either
+      SkiaSharp.NativeAssets.Linux or SkiaSharp.NativeAssets.Linux.NoDependencies.
+      Do NOT "fix" this by adding a PackageReference here.
+    -->
+    <!--<PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="4.151.0" />-->
   </ItemGroup>
 
   <ItemGroup>

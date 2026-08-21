@@ -9,6 +9,66 @@ CodeBrix.Texinfo supports applications and assemblies that target Microsoft .NET
 Microsoft .NET version 10.0 is a Long-Term Supported (LTS) version of .NET, and was released on Nov 11, 2025; and will be actively supported by Microsoft until Nov 14, 2028.
 Please update your C#/.NET code and projects to the latest LTS version of Microsoft .NET.
 
+## ⚠️ Important for Linux: SVG rendering needs a SkiaSharp native-assets package
+
+**If your application runs on Linux and converts Texinfo documents that embed SVG pictures**
+through `CodeBrix.Texinfo2Pdf` - or feeds `CodeBrix.Texinfo2Html` output to
+`CodeBrix.PdfDocCreate.Html2Pdf` yourself - your application must reference **one** of these two
+NuGet packages itself:
+
+```
+dotnet add package SkiaSharp.NativeAssets.Linux
+```
+
+**or**
+
+```
+dotnet add package SkiaSharp.NativeAssets.Linux.NoDependencies
+```
+
+**Either package works equally well - neither is recommended over the other.** Reference exactly
+one, whichever suits your application. **If your application already references one of them for its
+own reasons, keep that one** - nothing needs to change, and you should not swap it for the other,
+and you certainly do not need both.
+
+The two differ only in how the native library obtains font services: `SkiaSharp.NativeAssets.Linux`
+links against the system `libfontconfig`, while `SkiaSharp.NativeAssets.Linux.NoDependencies` is
+self-contained. That difference does not affect this conversion, which never consults system fonts,
+so the choice is yours to make on your own deployment grounds.
+
+**Windows and macOS require nothing extra** - SkiaSharp supplies those native binaries through its
+own package. This requirement applies to Linux only, and only when a document actually contains SVG
+content.
+
+**`CodeBrix.Texinfo2Html` on its own needs nothing.** It only emits HTML and CSS and never
+rasterizes anything, so it never touches SkiaSharp. The requirement arrives with the PDF stage.
+
+**Why isn't this just a package dependency?** Two mutually exclusive Linux native-assets variants
+exist, and only the consuming application can decide which one it wants. `CodeBrix.Texinfo2Pdf`
+therefore does not declare either one - and neither does `CodeBrix.PdfDocCreate.Html2Pdf`
+underneath it - because declaring one would force that choice on every consumer and conflict with
+applications that already reference the other. So the choice is deliberately left to you.
+
+**What happens if it is missing?** Nothing crashes and nothing throws. SVG pictures are skipped and
+the rest of the document renders normally into a complete PDF. The skip is reported through the
+conversion's collected warnings, so if SVG content is unexpectedly absent from your PDF, inspect
+`result.Warnings`:
+
+```csharp
+var result = new TexinfoPdfRenderer().RenderFile("manual.texi", "out/manual.pdf");
+
+//the guidance message, tagged [pdf] - or use result.Warnings.PdfMessages for it untagged
+foreach (var warning in result.Warnings.Messages) { Console.WriteLine(warning); }
+
+//or test for it exactly, by its stable code
+bool svgSkipped = result.Warnings.PdfItems.Any(i => i.Code == "image.svg.nativemissing");
+```
+
+Every SVG in the document fails for the same one environmental reason, so they collapse into a
+single warning whose `Occurrences` count says how many pictures were skipped. The message itself
+names `CodeBrix.PdfDocCreate.Html2Pdf` rather than `CodeBrix.Texinfo2Pdf`, because that is the
+library underneath doing the rasterizing - the packages to add are the same two either way.
+
 ## Project status
 
 Both libraries are complete and have public APIs — see the samples below.
@@ -34,6 +94,8 @@ NuGet package: `CodeBrix.Texinfo2Html.MitLicenseForever`
 A convenience library that performs the whole conversion in one step. It renders the Texinfo source to HTML and CSS with `CodeBrix.Texinfo2Html`, then hands that markup to `CodeBrix.PdfDocCreate.Html2Pdf` to produce the finished PDF document. Use this package when you want a PDF; use `CodeBrix.Texinfo2Html` on its own when you want the intermediate HTML and CSS, or when you want to post-process the markup before it is rendered.
 
 `CodeBrix.Texinfo2Pdf.MitLicenseForever` depends on `CodeBrix.Texinfo2Html.MitLicenseForever` and on `CodeBrix.PdfDocCreate.Html2Pdf.MitLicenseForever`, so installing it brings the whole conversion chain with it.
+
+On Linux, an application using this package to convert documents that contain SVG pictures must also reference `SkiaSharp.NativeAssets.Linux` or `SkiaSharp.NativeAssets.Linux.NoDependencies` itself — either one, never both. That dependency is real but undeclared, deliberately; see the important note near the top of this document.
 
 NuGet package: `CodeBrix.Texinfo2Pdf.MitLicenseForever`
 
@@ -100,7 +162,7 @@ renderer.RenderHtmlFile(path, "out/manual.pdf");
 
 Warnings from both halves of the conversion arrive in one list, each tagged with the half that produced it, and split out as `Warnings.TexinfoMessages` and `Warnings.PdfMessages` when you want to tell a problem in the source from a problem in the typesetting.
 
-If all you want is the HTML and CSS, install `CodeBrix.Texinfo2Html` on its own and use `TexinfoHtmlRenderer` directly — it has no dependencies at all beyond .NET:
+If all you want is the HTML and CSS, install `CodeBrix.Texinfo2Html` on its own and use `TexinfoHtmlRenderer` directly — it has no dependencies at all beyond .NET, on any operating system:
 
 ```csharp
 using CodeBrix.Texinfo2Html;

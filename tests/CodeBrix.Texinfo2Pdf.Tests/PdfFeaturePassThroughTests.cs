@@ -54,6 +54,40 @@ public class PdfFeaturePassThroughTests
     }
 
     [Fact]
+    public void An_svg_picture_reports_no_missing_native_warning_when_the_native_assets_are_present()
+    {
+        //Arrange - the canary for the Linux native-assets requirement. SVG rasterization is
+        //the one part of the conversion that needs the SkiaSharp native, and on Linux that
+        //native arrives only from a package the CONSUMER references; this test project
+        //references one precisely so this passes here. An application that references none
+        //gets "image.svg.nativemissing" instead, its picture skipped and the rest of its PDF
+        //intact - which is what the IMPORTANT notice in README.md and AGENT-README.txt is
+        //about. If this starts failing on Linux, the native-assets PackageReference has gone
+        //missing from THIS .csproj; do NOT "fix" it by adding one to src/.
+        string directory = Directory.CreateTempSubdirectory("texinfo-svg-native-").FullName;
+        try
+        {
+            File.WriteAllText(Path.Combine(directory, "note.svg"), RedSquareSvg);
+            string sourcePath = Path.Combine(directory, "manual.texi");
+            File.WriteAllText(sourcePath, Manual("A picture:\n\n@image{note}\n"));
+
+            //Act
+            TexinfoPdfResult pdf = new TexinfoPdfRenderer().RenderFile(sourcePath,
+                Path.Combine(directory, "manual.pdf"));
+
+            //Assert
+            pdf.Warnings.PdfItems.Any(i => i.Code == "image.svg.nativemissing")
+                .Should().BeFalse();
+            pdf.Warnings.Messages.Any(m => m.Contains("SkiaSharp.NativeAssets.Linux",
+                StringComparison.Ordinal)).Should().BeFalse();
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
     public void A_webp_image_referenced_by_a_manual_travels_into_the_pdf()
     {
         //Arrange - one of the bitmap formats the extension probe gained. The picture is

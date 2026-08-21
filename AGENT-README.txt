@@ -94,6 +94,76 @@ Update this file as the public API grows. Document what is true, never what is
 planned.
 
 
+################################################################################
+## IMPORTANT - LINUX ONLY: SVG RENDERING NEEDS A SkiaSharp NATIVE-ASSETS PACKAGE
+################################################################################
+
+If the application runs on LINUX and converts Texinfo documents that embed SVG
+pictures - through CodeBrix.Texinfo2Pdf, or by handing CodeBrix.Texinfo2Html
+output to CodeBrix.PdfDocCreate.Html2Pdf directly - the APPLICATION must
+reference ONE of these two NuGet packages itself:
+
+    SkiaSharp.NativeAssets.Linux
+    SkiaSharp.NativeAssets.Linux.NoDependencies
+
+  dotnet add package SkiaSharp.NativeAssets.Linux
+    -- OR --
+  dotnet add package SkiaSharp.NativeAssets.Linux.NoDependencies
+
+EITHER package works equally well - neither is recommended over the other.
+Reference exactly ONE, whichever suits the application. If the application
+already references one of them for its own reasons, KEEP THAT ONE; nothing needs
+to change, it must not be swapped for the other, and BOTH are never needed.
+
+The two differ only in how the native obtains font services - the plain variant
+links against the system libfontconfig, the ".NoDependencies" variant is
+self-contained - and that difference does not affect this conversion, which
+never consults system fonts. Choose on the application's own deployment grounds.
+
+WINDOWS and macOS need NOTHING extra - SkiaSharp's own package brings those
+natives transitively.
+
+CodeBrix.Texinfo2Html ON ITS OWN NEEDS NOTHING. It emits HTML and CSS and never
+rasterizes anything, so it never touches SkiaSharp; its test project carries no
+native-assets reference for that reason. The requirement arrives with the PDF
+stage only.
+
+WHY this is not just a package dependency: CodeBrix.Texinfo2Pdf DELIBERATELY
+does not declare a dependency on either package, and neither does
+CodeBrix.PdfDocCreate.Html2Pdf underneath it. Two mutually exclusive Linux
+variants exist, and only the consuming application can choose between them;
+declaring one here would force that choice on every consumer and break
+applications that already reference the other. This is a deliberate design
+decision - DO NOT "fix" it by adding a PackageReference to src/.
+
+WHAT HAPPENS IF IT IS MISSING: nothing crashes and nothing throws. SVG pictures
+are skipped and the rest of the document renders normally into a complete PDF.
+The skip arrives as a collected PDF-stage warning with the stable code
+"image.svg.nativemissing", whose message names both packages:
+
+    var result = new TexinfoPdfRenderer().RenderFile("manual.texi", "out.pdf");
+
+    result.Warnings.Messages       //the guidance, prefixed "[pdf] [image] "
+    result.Warnings.PdfMessages    //the same message, untagged
+    result.Warnings.PdfItems       //structured; .Code == "image.svg.nativemissing"
+
+Every SVG in the document fails for the same one environmental reason, so they
+collapse into a SINGLE warning whose .Occurrences count reports how many
+pictures were skipped. The message text names CodeBrix.PdfDocCreate.Html2Pdf
+rather than CodeBrix.Texinfo2Pdf, because that is the library underneath doing
+the rasterizing - the two packages to add are the same either way. Do not
+rewrite or re-wrap that message when surfacing it; pass it through verbatim.
+
+NOTE FOR THIS REPOSITORY'S OWN TESTS: tests/CodeBrix.Texinfo2Pdf.Tests carries a
+PackageReference to SkiaSharp.NativeAssets.Linux.NoDependencies so the suite's
+SVG tests pass on Linux. That is NOT a recommendation of that variant - the
+other one would serve equally well - and that reference belongs ONLY in tests/,
+never in src/. tests/CodeBrix.Texinfo2Html.Tests deliberately has no such
+reference, because nothing in that library reaches SkiaSharp.
+
+################################################################################
+
+
 INSTALLATION
 --------------------------------------------------------------------------------
 
@@ -115,6 +185,12 @@ and CodeBrix.Texinfo2Pdf. The suffix is a CodeBrix family convention that
 records the license the packages will always be published under.
 
 Target framework: .NET 10.0 or higher. Both libraries target net10.0 only.
+
+ON LINUX, an application that converts documents containing SVG pictures must
+ALSO reference SkiaSharp.NativeAssets.Linux or
+SkiaSharp.NativeAssets.Linux.NoDependencies itself - either one, never both.
+This dependency is real but undeclared, by design; see the IMPORTANT notice
+above for why, and for what happens when it is missing.
 
 
 KEY NAMESPACES
@@ -368,7 +444,9 @@ An @image reference names a file with no directory and usually no extension, so
 the file is searched for and its extension probed - every format the PDF stage
 can place (.png .jpg .jpeg .gif .bmp .svg .webp .tif .tiff .tga .ppm .pgm .pbm,
 plus any extension the command declares). SVG pictures are rasterized by
-Html2Pdf itself, identically on every operating system; the bitmap formats are
+Html2Pdf itself, identically on every operating system - though ON LINUX that
+needs a SkiaSharp native-assets package reference in the consuming application;
+see the IMPORTANT notice near the top of this file. The bitmap formats are
 decoded by CodeBrix.Imaging with transparency preserved. Do NOT add .pdf to
 that probe: a manual that keeps pdf/NAME variants for its TeX branch would then
 hand Html2Pdf a file it cannot decode.
@@ -632,6 +710,12 @@ exact drop baseline ("these N distinct code points, M occurrences") instead of
 pattern-matching display prose, which is not a compatibility surface. The
 Texinfo stage has no structured form; filter TexinfoMessages by its leading
 category word instead.
+
+Both surfaces pass the PDF stage's text through VERBATIM - nothing is trimmed,
+re-wrapped or re-worded on the way out. That matters most for the Linux
+native-assets guidance, code "image.svg.nativemissing", whose whole value is in
+naming the two packages it names; see the IMPORTANT notice near the top of this
+file. Preserve that behaviour.
 
 A message means a different thing depending on which stage said it - the Texinfo
 stage is talking about the source, the PDF stage about the markup or the fonts -
@@ -906,7 +990,24 @@ THIRD-PARTY-NOTICES.txt. Nothing GFDL, nothing GPL.
 
 Run the whole suite from the repository root:
 
-    dotnet test CodeBrix.Texinfo.slnx
+    dotnet test --solution CodeBrix.Texinfo.slnx
+
+The test projects run on Microsoft.Testing.Platform (xunit.v3 4.x), which no
+longer supports the legacy VSTest bridge on the .NET 10 SDK. That makes the
+global.json beside the .slnx load-bearing: it selects that runner for
+"dotnet test", has no "sdk" section, and pins no SDK version - runner selection
+is the only thing it is there for. Do NOT delete it. Without it "dotnet test"
+fails outright with "Testing with VSTest target is no longer supported by
+Microsoft.Testing.Platform on .NET 10 SDK and later".
+
+Naming the target explicitly - "--solution <file>.slnx", or "--project
+<file>.csproj" for one project - is the form to prefer and the one to write in
+scripts.
+
+Each test project also builds to an executable, so a single suite can be run
+directly without the SDK test host at all:
+
+    tests/CodeBrix.Texinfo2Pdf.Tests/bin/Debug/net10.0/CodeBrix.Texinfo2Pdf.Tests
 
 
 ================================================================================

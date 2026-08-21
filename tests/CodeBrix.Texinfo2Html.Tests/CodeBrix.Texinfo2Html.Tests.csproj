@@ -13,13 +13,11 @@
     <PackageReference Include="xunit.v3" Version="4.0.0" />
     <PackageReference Include="SilverAssertions.ApacheLicenseForever" Version="1.0.164.180" />
     <!--
-      SkiaSharp.NativeAssets.Linux is needed for the tests to run on a Linux platform, 
-      and its presence here should not cause problems for Windows or Mac.
-      Texinfo2Html reaches SkiaSharp through Html2Pdf's SVG path (CodeBrix.SkiaSvg), and
-      CodeBrix.PdfDocCreate.Html2Pdf deliberately does not declare the Linux native-assets
-      dependency itself - see the note in that library's .csproj.
+      No SkiaSharp native-assets package is referenced here on purpose. CodeBrix.Texinfo2Html
+      only emits HTML and CSS - it never rasterizes anything, so it never touches SkiaSharp.
+      The Linux native-assets requirement belongs to CodeBrix.PdfDocCreate.Html2Pdf, which
+      CodeBrix.Texinfo2Pdf references; see that project's .Tests .csproj.
     -->
-    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="4.151.0" />
   </ItemGroup>
 
   <ItemGroup>
