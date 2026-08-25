@@ -1,219 +1,111 @@
 ================================================================================
-                         AGENT-README: CodeBrix.Texinfo
-                   A Comprehensive Guide for AI Coding Agents
+AGENT-README: CodeBrix.Texinfo2Html
+A Guide for AI Coding Agents — CONSUMING the CodeBrix.Texinfo2Html.MitLicenseForever NuGet package
 ================================================================================
 
 
 OVERVIEW
---------------------------------------------------------------------------------
+========
 
-CodeBrix.Texinfo is a repository containing two fully managed, cross-platform
-.NET libraries that turn GNU Texinfo documentation into nicely-formatted PDF
-documents.
+CodeBrix.Texinfo2Html is a fully managed, cross-platform .NET library that reads
+a GNU Texinfo source file and renders it into HTML and CSS. The markup it emits
+is written for PDF generation rather than for the browser: it stays inside the
+documented HTML and CSS subset that CodeBrix.PdfDocCreate.Html2Pdf understands,
+so the output is ready to be handed straight to that library - or to
+CodeBrix.Texinfo2Pdf, the sibling package that does exactly that in one call.
 
-CodeBrix.Texinfo2Html reads a Texinfo source file and renders it into HTML and
-CSS. The markup it emits is written for PDF generation rather than for the
-browser: it stays inside the documented HTML and CSS subset that
-CodeBrix.PdfDocCreate.Html2Pdf understands, so the output is ready to be handed
-straight to that library.
+It targets .NET 10 or later.
 
-CodeBrix.Texinfo2Pdf is a convenience library that performs the whole
-conversion in one step. It renders the Texinfo source to HTML and CSS with
-CodeBrix.Texinfo2Html, then feeds that markup to CodeBrix.PdfDocCreate.Html2Pdf
-to produce the finished PDF document.
-
-Both libraries read two input dialects:
+It reads two input dialects:
 
     .texi     Standard GNU Texinfo source files.
     .tely     The Texinfo dialect produced by LilyPond and CodeBrix.LilyPort,
               in which Texinfo markup is interleaved with LilyPond music
               snippets.
 
+Provenance: this is an original implementation of a reader for the Texinfo file
+format. It is not a port and contains no code from the GNU Texinfo project or
+from any other Texinfo implementation.
 
-CURRENT STATUS - READ THIS FIRST
---------------------------------------------------------------------------------
+The whole pipeline is in place and the public API is complete. Rendering never
+throws over the contents of a document: anything unsupported, malformed or
+missing becomes a warning in the result plus the nearest readable degradation.
+The public surface is twelve types in one namespace: six for rendering a
+document, six making up the music-snippet seam. Everything else is internal.
 
-Both libraries are complete and have public APIs. A consumer who wants a PDF
-installs CodeBrix.Texinfo2Pdf and calls one method.
+OTHER PACKAGES IN THIS REPOSITORY
+---------------------------------
 
-CodeBrix.Texinfo2Html renders Texinfo to HTML and CSS end to end. Its whole
-pipeline is in place:
-
-  Sources/        source loading, encoding and line-ending handling
-  Lexing/         a lossless Texinfo lexer with raw-block capture
-  Preprocessing/  @include with search paths, @set/@clear/@value, conditional
-                  profiles, raw output blocks, comments, @verbatiminclude, and
-                  full @macro/@rmacro/@linemacro/@unmacro/@alias expansion
-  Parsing/        the parser and its table of built-in commands
-  Model/          the parsed document tree - sections, blocks, inline runs,
-                  plus the anchor, index, footnote and settings tables
-  Semantics/      section numbering, HTML identifier allocation, heading
-                  ranking, table-of-contents construction, footnote placement,
-                  float numbering, and index building (merges, sort keys,
-                  ordering)
-  Snippets/       the lilypond-book option list, and the coordinator that hands
-                  music environments to a registered engraver
-  Emit/           the HTML emitter, the default print stylesheet, the document
-                  builder, image reference resolution and the text conventions
-  Diagnostics/    collected warnings, used instead of exceptions throughout
-
-Everything except the types named in CORE API REFERENCE below is internal, and
-is exercised directly by the test project through InternalsVisibleTo.
-
-CodeBrix.Texinfo2Pdf owns the hand-off to CodeBrix.PdfDocCreate.Html2Pdf and
-nothing else. It parses nothing and emits nothing: it runs Texinfo2Html over the
-source, gives the markup and the document's pictures to Html2Pdf, and merges
-what both of them had to say. Four public types, one internal staging helper.
-
-What the pair does NOT do, so that no agent documents it as though it did:
-
-  * THE TARGET IS ONE PRINTED DOCUMENT. There is no Info output and no
-    split-into-a-website HTML output. @menu is parsed and dropped, and node
-    pointers (next, prev, up) are read and ignored, because a PDF is read front
-    to back and has no navigation to build.
-  * @math and @displaymath are styled text. There is no mathematical
-    typesetter here and there is not going to be one.
-  * @documentencoding is read and reported, NOT obeyed. Source is UTF-8 (or
-    whatever a byte order mark says); see COVERAGE AND SCALE below.
-  * A block environment that is NOT preformatted, written inside one that is -
-    an @itemize inside an @display - is not rendered as itself. A list or a
-    table has no representation inside preformatted text, so it degrades with a
-    warning. A PREFORMATTED environment nested in another one does work; see
-    NESTED PREFORMATTED BLOCKS below.
-  * txidefnamenospace is read as it stood at the END of the document, so a
-    document that sets and clears it around one definition gets the setting
-    the last @set left. Setting it once, which is how it is meant to be used,
-    works.
-  * Nothing here engraves music. The seam to do it is defined and wired (see
-    MUSIC SNIPPETS below), but this library will not take on a dependency on
-    LilyPond, so with no renderer registered a snippet is its source text.
-
-Keep new source files organized into sub-folders and matching sub-namespaces
-(see ARCHITECTURE below); only the entry-point types belong at a project root.
-Update this file as the public API grows. Document what is true, never what is
-planned.
-
-
-################################################################################
-## IMPORTANT - LINUX ONLY: SVG RENDERING NEEDS A SkiaSharp NATIVE-ASSETS PACKAGE
-################################################################################
-
-If the application runs on LINUX and converts Texinfo documents that embed SVG
-pictures - through CodeBrix.Texinfo2Pdf, or by handing CodeBrix.Texinfo2Html
-output to CodeBrix.PdfDocCreate.Html2Pdf directly - the APPLICATION must
-reference ONE of these two NuGet packages itself:
-
-    SkiaSharp.NativeAssets.Linux
-    SkiaSharp.NativeAssets.Linux.NoDependencies
-
-  dotnet add package SkiaSharp.NativeAssets.Linux
-    -- OR --
-  dotnet add package SkiaSharp.NativeAssets.Linux.NoDependencies
-
-EITHER package works equally well - neither is recommended over the other.
-Reference exactly ONE, whichever suits the application. If the application
-already references one of them for its own reasons, KEEP THAT ONE; nothing needs
-to change, it must not be swapped for the other, and BOTH are never needed.
-
-The two differ only in how the native obtains font services - the plain variant
-links against the system libfontconfig, the ".NoDependencies" variant is
-self-contained - and that difference does not affect this conversion, which
-never consults system fonts. Choose on the application's own deployment grounds.
-
-WINDOWS and macOS need NOTHING extra - SkiaSharp's own package brings those
-natives transitively.
-
-CodeBrix.Texinfo2Html ON ITS OWN NEEDS NOTHING. It emits HTML and CSS and never
-rasterizes anything, so it never touches SkiaSharp; its test project carries no
-native-assets reference for that reason. The requirement arrives with the PDF
-stage only.
-
-WHY this is not just a package dependency: CodeBrix.Texinfo2Pdf DELIBERATELY
-does not declare a dependency on either package, and neither does
-CodeBrix.PdfDocCreate.Html2Pdf underneath it. Two mutually exclusive Linux
-variants exist, and only the consuming application can choose between them;
-declaring one here would force that choice on every consumer and break
-applications that already reference the other. This is a deliberate design
-decision - DO NOT "fix" it by adding a PackageReference to src/.
-
-WHAT HAPPENS IF IT IS MISSING: nothing crashes and nothing throws. SVG pictures
-are skipped and the rest of the document renders normally into a complete PDF.
-The skip arrives as a collected PDF-stage warning with the stable code
-"image.svg.nativemissing", whose message names both packages:
-
-    var result = new TexinfoPdfRenderer().RenderFile("manual.texi", "out.pdf");
-
-    result.Warnings.Messages       //the guidance, prefixed "[pdf] [image] "
-    result.Warnings.PdfMessages    //the same message, untagged
-    result.Warnings.PdfItems       //structured; .Code == "image.svg.nativemissing"
-
-Every SVG in the document fails for the same one environmental reason, so they
-collapse into a SINGLE warning whose .Occurrences count reports how many
-pictures were skipped. The message text names CodeBrix.PdfDocCreate.Html2Pdf
-rather than CodeBrix.Texinfo2Pdf, because that is the library underneath doing
-the rasterizing - the two packages to add are the same either way. Do not
-rewrite or re-wrap that message when surfacing it; pass it through verbatim.
-
-NOTE FOR THIS REPOSITORY'S OWN TESTS: tests/CodeBrix.Texinfo2Pdf.Tests carries a
-PackageReference to SkiaSharp.NativeAssets.Linux.NoDependencies so the suite's
-SVG tests pass on Linux. That is NOT a recommendation of that variant - the
-other one would serve equally well - and that reference belongs ONLY in tests/,
-never in src/. tests/CodeBrix.Texinfo2Html.Tests deliberately has no such
-reference, because nothing in that library reaches SkiaSharp.
-
-################################################################################
+    CodeBrix.Texinfo2Pdf.MitLicenseForever  (MIT)
+        Texinfo source -> PDF in one step, built on this package plus
+        CodeBrix.PdfDocCreate.Html2Pdf. Its GenerateHtml methods hand back the
+        very same TexinfoHtmlResult documented here, so a consumer who installs
+        the PDF package still has the whole intermediate and does not need this
+        package as a separate reference.
+        See src/CodeBrix.Texinfo2Pdf/AGENT-README.txt
+        (https://github.com/ellisnet/CodeBrix.Texinfo/blob/main/src/CodeBrix.Texinfo2Pdf/AGENT-README.txt)
 
 
 INSTALLATION
---------------------------------------------------------------------------------
-
-NuGet packages:  CodeBrix.Texinfo2Html.MitLicenseForever
-                 CodeBrix.Texinfo2Pdf.MitLicenseForever
+============
 
     dotnet add package CodeBrix.Texinfo2Html.MitLicenseForever
-    dotnet add package CodeBrix.Texinfo2Pdf.MitLicenseForever
 
-Install CodeBrix.Texinfo2Pdf when you want a PDF; it depends on
-CodeBrix.Texinfo2Html and on CodeBrix.PdfDocCreate.Html2Pdf, so it brings the
-whole conversion chain with it. Install CodeBrix.Texinfo2Html on its own when
-you want the intermediate HTML and CSS, or when you want to post-process the
-markup before it is rendered to PDF.
+PackageId:      CodeBrix.Texinfo2Html.MitLicenseForever
+Assembly:       CodeBrix.Texinfo2Html
+Namespace:      CodeBrix.Texinfo2Html
+License:        MIT
+Dependencies:   none - nothing beyond .NET itself, on any operating system.
+Requirements:   none. This package emits HTML and CSS and never rasterizes
+                anything, so it never touches SkiaSharp and needs no native
+                assets on any platform, Linux included.
 
-Note that the NuGet package ids carry the ".MitLicenseForever" suffix but the
-assemblies and the namespaces do NOT - they are simply CodeBrix.Texinfo2Html
-and CodeBrix.Texinfo2Pdf. The suffix is a CodeBrix family convention that
-records the license the packages will always be published under.
+The package id carries the ".MitLicenseForever" suffix but the assembly and the
+namespace do NOT - they are simply CodeBrix.Texinfo2Html. The suffix is a
+CodeBrix family convention that records the license the package will always be
+published under.
 
-Target framework: .NET 10.0 or higher. Both libraries target net10.0 only.
+Install this package on its own when you want the intermediate HTML and CSS, or
+when you want to post-process the markup before it is rendered to PDF. Install
+CodeBrix.Texinfo2Pdf.MitLicenseForever instead when you want a PDF; it depends
+on this package and brings it along.
 
-ON LINUX, an application that converts documents containing SVG pictures must
-ALSO reference SkiaSharp.NativeAssets.Linux or
-SkiaSharp.NativeAssets.Linux.NoDependencies itself - either one, never both.
-This dependency is real but undeclared, by design; see the IMPORTANT notice
-above for why, and for what happens when it is missing.
+If you hand this package's output to CodeBrix.PdfDocCreate.Html2Pdf yourself
+and the document embeds SVG pictures, then ON LINUX the application must
+reference SkiaSharp.NativeAssets.Linux or SkiaSharp.NativeAssets.Linux.NoDependencies
+itself - either one, never both. That requirement belongs to the PDF stage, not
+to this package; the Texinfo2Pdf AGENT-README explains it in full.
 
 
-KEY NAMESPACES
---------------------------------------------------------------------------------
+KEY NAMESPACES / USINGS
+=======================
 
-    using CodeBrix.Texinfo2Html;    //Texinfo source -> HTML and CSS
-    using CodeBrix.Texinfo2Pdf;     //Texinfo source -> PDF, in one step
+    using CodeBrix.Texinfo2Html;    //every public type of this package
 
-Every public type of each library sits in that library's own root namespace; the
-sub-namespaces underneath them (Sources, Lexing, Preprocessing, Parsing, Model,
-Semantics, Emit, Diagnostics in Texinfo2Html, Rendering in Texinfo2Pdf) are all
-internal. There is no separate CodeBrix.Texinfo namespace and no project named
-CodeBrix.Texinfo - that name belongs to the repository and to the solution file
-only.
+Every public type sits in that one root namespace. The sub-namespaces underneath
+it (Sources, Lexing, Preprocessing, Parsing, Model, Semantics, Snippets, Emit,
+Diagnostics) are all internal. There is no CodeBrix.Texinfo namespace and no
+CodeBrix.Texinfo assembly - that name belongs to the GitHub repository only.
 
-Using CodeBrix.Texinfo2Pdf does not mean giving up the HTML stage: its
-GenerateHtml methods hand back the very same TexinfoHtmlResult, so a consumer
-who installs the PDF package still has the whole intermediate available and
-does not need the Texinfo2Html package as well.
+The twelve public types:
+
+    TexinfoHtmlRenderer         the entry point
+    TexinfoHtmlOptions          settings, reachable as renderer.Options
+    TexinfoHtmlResult           what a render returns
+    TexinfoImageReference       one picture the markup refers to
+    TexinfoRenderWarnings       everything that had to be degraded
+    TexinfoConditionalProfile   enum: Print | Html
+
+    ILilypondSnippetRenderer    the music-engraving seam (you implement it)
+    LilypondSnippet             what an implementation is handed
+    LilypondSnippetKind         enum: Music | LilypondFile | MusicXmlFile
+    LilypondSnippetOptions      the snippet's bracketed options, typed
+    LilypondSnippetResult       what an implementation returns
+    LilypondSnippetImage        one picture inside that result
 
 
 WHAT IT DOES WITH A DOCUMENT
---------------------------------------------------------------------------------
+============================
 
 Beyond the structure of a manual - its sectioning tree, contents, block
 environments and inline markup - the renderer settles the things a printed
@@ -237,10 +129,9 @@ document needs and an Info reader does not:
     txiindexatsignignore flags. A document defines an index of its own with
     @defindex or @defcodeindex, and the @NAMEindex command that files into it
     comes into existence with it; @defcodeindex is the one whose entries print
-    in a fixed-width font. Entries are grouped under letter headings, set
-    in a fixed-width font for every predefined index except the concept one,
-    and each
-    line links to a marker left where the entry was written AND names the
+    in a fixed-width font. Entries are grouped under letter headings, set in a
+    fixed-width font for every predefined index except the concept one, and
+    each line links to a marker left where the entry was written AND names the
     section it came from - a printed index has no page numbers to give, so the
     section name is what tells two identically worded entries apart. Markers
     are only emitted for entries an index actually prints.
@@ -276,8 +167,8 @@ document needs and an Info reader does not:
     Texinfo prints the category out at the right margin. That needs a floating
     box the output subset has not got, so it is written at the head of the line
     instead - where the Info output puts it, and where it still labels what
-    follows. Do not "fix" this into a table: a definition sits inside lists,
-    quotations and other definitions, and a table there is a layout trap.
+    follows. A definition may sit inside lists, quotations and other
+    definitions, so it is never laid out as a table.
 
   * FLOATS ARE NUMBERED AND CAPTIONED. A @float counts within its chapter and
     within its own type, so a manual runs Figure 1.1, Figure 1.2, Table 1.1 and
@@ -307,13 +198,11 @@ document needs and an Info reader does not:
     there need to be one, because the text is already whitespace-preserved. The
     inner block is written as one more step of indentation (five spaces, the
     step Texinfo's own printed output uses), which is what the nesting means.
-    Do not "fix" this into a second <pre>: no browser accepts one and Html2Pdf
-    is not being asked to. The inner block keeps its OWN text conventions, so an
-    @example inside a @display still has its dashes left alone while the prose
-    around it is converted - which is why it stays a node of its own rather than
-    being flattened into text. Indentation is written when a line turns out to
-    have content, never on the line break that ended the one before, so blank
-    lines stay blank and nothing trails. A paragraph directive written inside a
+    The inner block keeps its OWN text conventions, so an @example inside a
+    @display still has its dashes left alone while the prose around it is
+    converted. Indentation is written when a line turns out to have content,
+    never on the line break that ended the one before, so blank lines stay
+    blank and nothing trails. A paragraph directive written inside a
     preformatted block (@noindent, @indent) is dropped, line and all.
 
   * A LINE MACRO READS A WHOLE LINE. @linemacro defines a macro that is called
@@ -322,33 +211,32 @@ document needs and an Info reader does not:
     pair of braces enclosing an argument is removed, an empty argument has to be
     written as {}, and the last argument takes the whole rest of the line so it
     may hold spaces unbraced. A brace after the macro name therefore opens the
-    first ARGUMENT and is not a brace-form argument list. Do not "improve" this
-    into the comma splitting the other forms use - it is a different rule, not
-    an oversight. A line whose last character is a lone @ continues onto the
-    next one, and that @ and its newline stay inside the argument, because what
-    the expansion has to produce is a valid definition line. The reason the
-    command exists is to let a manual define its own definition commands on top
-    of @defline and @deftypeline, so it earns its keep only alongside those.
+    first ARGUMENT and is not a brace-form argument list. A line whose last
+    character is a lone @ continues onto the next one, and that @ and its
+    newline stay inside the argument, because what the expansion has to produce
+    is a valid definition line. The reason the command exists is to let a
+    manual define its own definition commands on top of @defline and
+    @deftypeline, so it earns its keep only alongside those.
 
 
 COVERAGE AND SCALE - WHAT TO EXPECT OF A REAL MANUAL
---------------------------------------------------------------------------------
+====================================================
 
 There is no list of supported commands to check a document against, because the
-answer is not a list: what a document uses that these libraries do not implement
+answer is not a list: what a document uses that this library does not implement
 becomes a WARNING and the nearest readable degradation, never an exception and
 never a lost document. So the useful question is not "is @foo supported" but
 "how many warnings does my manual produce, and do I mind them". Render it and
 read result.Warnings - that is the intended way to find out.
 
-What the libraries are actually run against, every time the test suite runs:
+What the library is actually run against, every time its test suite runs:
 
   * THE ENGLISH LILYPOND DOCUMENTATION SET - eight manuals, about 110,000 lines
     across 123 files, the largest of them the 51,000-line notation reference.
-    All eight parse and render to PDF, and every internal link in the output has
-    a destination in the same document. This corpus leans hard on @macro (its own
-    two macro files define 158 of them), on the .tely music environments, and on
-    accented and Cyrillic text.
+    All eight parse and render, and every internal link in the output has a
+    destination in the same document. This corpus leans hard on @macro (its own
+    two macro files define 158 of them), on the .tely music environments, and
+    on accented and Cyrillic text.
   * THE GNU TEXINFO MANUAL - the language's own manual, and the widest use of
     general-Texinfo commands there is. It renders with four warnings, every one
     a thing this library declines to do rather than cannot: three skipped @tex
@@ -363,25 +251,12 @@ category and is still read as UTF-8. A Latin-1 manual therefore needs converting
 before it is rendered - the warning is there to say so rather than to let the
 accented characters come out wrong in silence.
 
-Scale, so nobody has to guess:
-
-  * The notation reference - 51,000 lines in, 965 pages out - takes on the order
-    of SIX SECONDS end to end on a developer laptop. Reading and parsing the
-    Texinfo is a fraction of a second of that; the time is the typesetting, and
-    it is Html2Pdf's, not this library's.
-  * Cost is linear in document size. There is a test that renders synthetic
-    manuals of 500 and 2,000 sections purely to fail if anything ever goes
-    quadratic, because a corpus test would only report that as "slow today".
-  * A reused renderer accumulates nothing between documents; reading the same
-    manual twice through one renderer costs the same both times.
-
-The shape that follows from this: a manual of any size is comfortable in a build
-step or an offline job. Rendering a 965-page manual inside a web request is not
-what any of this is for.
+Reading and parsing even the 51,000-line notation reference is a fraction of a
+second; see PERFORMANCE TIPS below for the numbers.
 
 
 MUSIC SNIPPETS (the .tely dialect)
---------------------------------------------------------------------------------
+==================================
 
 @lilypond (block form and brace form), @lilypondfile and @musicxmlfile are
 parsed, their bracketed options are read into named properties, and the whole
@@ -389,9 +264,9 @@ snippet is offered to ILilypondSnippetRenderer if the caller registered one on
 Options.SnippetRenderer.
 
 WITH NO RENDERER - the default - the snippet is shown as its source text in a
-preformatted block and ONE warning records how many there were. That is not a
-placeholder to be removed later: engraving music means running LilyPond, and
-this library will not take on that dependency.
+preformatted block (<pre class="texinfo-lilypond">) and ONE warning records how
+many there were. That is not a placeholder to be removed later: engraving music
+means running LilyPond, and this library will not take on that dependency.
 
 WITH A RENDERER, the pictures it returns are placed and are registered in
 result.Images, so they travel with the document exactly as @image pictures do -
@@ -405,11 +280,9 @@ engraver's business and is simply passed along:
 
     verbatim   show the source as well as the engraving. The source is written
                ABOVE the picture - input first, then what it produces.
-    quote      indent the snippet. Written as an inline style, NOT as a
-               container: a bordered container is laid out by Html2Pdf as one
-               box, and that is what silently swallowed multitables inside
-               @quotation until it was written this way. Do not "improve" this
-               into a <div>.
+    quote      indent the snippet. Written as an inline style on the element,
+               not as a wrapping container, so a snippet inside @quotation
+               stays inside the quotation's own layout.
 
 The option vocabulary is the one MEASURED across the whole English LilyPond
 documentation set, not one invented from the syntax: quote, verbatim, inline,
@@ -421,13 +294,21 @@ that knows an option this library does not can still act on it. Dimensions are
 kept as strings ("3\cm", "6\in") because they are LilyPond's own units and mean
 nothing outside an engraver; do not convert them.
 
-Three things about this seam that are easy to get wrong:
+A file named by @lilypondfile or @musicxmlfile is looked for on the document's
+search path (the source directory, its parent, then IncludeSearchPaths). A name
+written without an extension is tried with .ly, .xml, .musicxml and .mxl in
+turn. A rooted path is used as it stands.
+
+Things about this seam that are easy to get wrong:
 
   * AN IDENTICAL SNIPPET IS ENGRAVED ONCE. The cache key is everything the
-    renderer is given, so reuse can never change what is shown. The notation
-    reference holds over 1,600 snippets and repeats many of them.
+    renderer is given (kind, file name, resolved path, source text and the
+    option list as written), so reuse can never change what is shown. The
+    notation reference holds over 1,600 snippets and repeats many of them.
   * A RENDERER THAT THROWS IS CAUGHT and turned into the failure it should have
-    returned. A document must not be lost to a consumer's exception.
+    returned (the exception type name and message become the failure text). A
+    document must not be lost to a consumer's exception. A renderer that
+    returns null is treated as NotRendered.
   * @lilypondfile WITH verbatim READS THE FILE - the one place this library
     opens a music file rather than only naming it - and starts at the file's
     "% begin verbatim" marker when it has one. Every one of the 389 snippet
@@ -435,96 +316,155 @@ Three things about this seam that are easy to get wrong:
     \header block, which is exactly the boilerplate it exists to skip. A file
     that is missing is only reported when a renderer was registered; with none,
     the document never needed it.
+  * EVERY KIND OF SNIPPET TROUBLE IS COUNTED, NOT LISTED. Snippets shown as
+    source, renderer failures, missing music files and unrecognized options
+    each produce ONE warning for the whole document, naming the count and the
+    first case - so a misconfigured engraver cannot bury every other warning
+    under thousands of its own.
+
+The implementer's contract, with signatures, is under CORE API REFERENCE; a
+complete implementation is under COMPLETE EXAMPLES.
 
 
 IMAGES
---------------------------------------------------------------------------------
+======
 
 An @image reference names a file with no directory and usually no extension, so
 the file is searched for and its extension probed - every format the PDF stage
 can place (.png .jpg .jpeg .gif .bmp .svg .webp .tif .tiff .tga .ppm .pgm .pbm,
-plus any extension the command declares). SVG pictures are rasterized by
-Html2Pdf itself, identically on every operating system - though ON LINUX that
-needs a SkiaSharp native-assets package reference in the consuming application;
-see the IMPORTANT notice near the top of this file. The bitmap formats are
-decoded by CodeBrix.Imaging with transparency preserved. Do NOT add .pdf to
-that probe: a manual that keeps pdf/NAME variants for its TeX branch would then
-hand Html2Pdf a file it cannot decode.
+plus any extension the command declares). .pdf is deliberately NOT probed: a
+manual that keeps pdf/NAME variants for its TeX branch would otherwise hand the
+PDF stage a file it cannot decode.
 
-What the markup writes is NOT where the file was found. It is a path relative
-to the document itself - <ImageFolderName>/<file> - so the generated document
-is complete once its pictures are beside it:
+This package only NAMES pictures; it never decodes or rasterizes them. What the
+markup writes is NOT where the file was found. It is a path relative to the
+document itself - <ImageFolderName>/<file> - so the generated document is
+complete once its pictures are beside it:
 
     WriteToDirectory(dir)   writes the markup and the stylesheet AND copies
                             every picture into dir, which is everything the
                             document needs.
     CopyImagesTo(dir)       does only the copying, for a caller that renders
                             result.Html from memory. Pass the same dir to
-                            Html2Pdf as the base directory.
+                            the PDF stage as its base directory.
     result.Images           the whole mapping: SourcePath -> RelativePath.
 
 Two pictures with the same file name from different directories are numbered
 apart. A picture that cannot be found becomes its alternate text in grey
-italic, plus one warning.
+italic (class "texinfo-missing-image"), plus one warning under the Include
+category.
+
+WHERE PICTURES ARE LOOKED FOR, in order:
+
+    1. the source file's directory       (GenerateFromFile) / baseDirectory
+                                          (Generate)
+    2. that directory's parent
+    3. each entry of Options.IncludeSearchPaths, in list order
+    4. each entry of Options.ImageSearchPaths, in list order
+
+For each directory every candidate extension is tried before moving to the
+next directory. Relative entries in the two lists are resolved against the
+process's current directory, so prefer absolute paths there.
 
 
-CORE API REFERENCE - CodeBrix.Texinfo2Html
---------------------------------------------------------------------------------
+CORE API REFERENCE
+==================
 
-Twelve public types, all in the CodeBrix.Texinfo2Html namespace: six for
-rendering a document, and six making up the music-snippet seam.
+Twelve public types, all in the CodeBrix.Texinfo2Html namespace.
 
---- TexinfoHtmlRenderer ---
+TexinfoHtmlRenderer
+-------------------
 
     var renderer = new TexinfoHtmlRenderer();
 
-    TexinfoHtmlResult GenerateFromFile(string texinfoFilePath)
-    TexinfoHtmlResult Generate(string texinfoSource, string baseDirectory = null)
     TexinfoHtmlOptions Options { get; }
+    TexinfoHtmlResult  GenerateFromFile(string texinfoFilePath)
+    TexinfoHtmlResult  Generate(string texinfoSource, string baseDirectory = null)
 
 One renderer can be reused for many documents; set Options before calling, and
 note that it is NOT safe across threads - give each thread its own renderer.
 Rendering never throws over the contents of a document - anything unsupported,
 malformed or missing becomes a warning in the result plus the nearest readable
 degradation. Exceptions are reserved for the caller's own mistakes:
-ArgumentException for a blank path, FileNotFoundException for a source file
-that is not there.
+
+    ArgumentException         GenerateFromFile given a null or blank path
+    FileNotFoundException     GenerateFromFile given a file that is not there
+    ArgumentNullException     Generate given a null source string
 
 GenerateFromFile seeds the search paths with the source file's directory AND
 that directory's parent, in that order, which is what lets a manual written as
 a tree of @include files render from its top-level source, and what lets
-@image{pictures/foo} resolve from a sibling directory.
+@image{pictures/foo} resolve from a sibling directory. It also derives the
+stylesheet name, the image folder name and the default output base name from
+the source file's name.
 
---- TexinfoHtmlOptions ---
+Generate reads source held in memory. Its baseDirectory is what @include,
+@image and the music-file commands resolve against; pass null when the source
+needs no files of its own. The derived names are then texinfo.css,
+texinfo-images/ and "index".
 
-    bool                       EmitSingleFile          (false)
-    TexinfoConditionalProfile  ConditionalProfile      (Print)
-    List<string>               IncludeSearchPaths      (empty)
-    List<string>               ImageSearchPaths        (empty)
-    Dictionary<string,string>  PredefinedValues        (empty)
-    bool                       NumberSections          (true)
-    string                     ExtraCss                ("")
-    string                     CssFileName             ("" - derived)
-    string                     ImageFolderName         ("" - derived)
-    ILilypondSnippetRenderer   SnippetRenderer         (null)
+TexinfoHtmlOptions
+------------------
 
-PredefinedValues acts as though the source opened with @set name value, which
-is how to supply the version and date strings a manual's build normally
-generates into an included file. ExtraCss is appended after the built-in
-stylesheet, so a repeated rule of equal specificity wins. CssFileName and
-ImageFolderName are derived from the source file's name when left empty
-(manual.css and manual-images/), or are texinfo.css and texinfo-images/ for a
-document rendered from a string.
+    bool                       EmitSingleFile      { get; set; }   (false)
+    TexinfoConditionalProfile  ConditionalProfile  { get; set; }   (Print)
+    List<string>               IncludeSearchPaths  { get; }        (empty)
+    List<string>               ImageSearchPaths    { get; }        (empty)
+    Dictionary<string,string>  PredefinedValues    { get; }        (empty; ordinal keys)
+    bool                       NumberSections      { get; set; }   (true)
+    string                     ExtraCss            { get; set; }   ("")
+    string                     CssFileName         { get; set; }   ("" - derived)
+    string                     ImageFolderName     { get; set; }   ("" - derived)
+    ILilypondSnippetRenderer   SnippetRenderer     { get; set; }   (null)
 
---- TexinfoHtmlResult ---
+EmitSingleFile   true embeds the stylesheet in the HTML; false (default) links
+                 to a stylesheet file beside it, the easier pair to restyle by
+                 hand. result.Css is populated either way.
+
+IncludeSearchPaths   EXTRA directories searched by @include, @lilypondfile and
+                 @musicxmlfile, AFTER the source file's directory and that
+                 directory's parent, which are always searched first. Entries
+                 are tried in list order. Blank entries are ignored.
+
+ImageSearchPaths   EXTRA directories searched for the files named by @image,
+                 AFTER everything @include searches (so after the two
+                 automatic directories and after IncludeSearchPaths). Each
+                 directory is tried with every candidate extension. These
+                 paths are NOT consulted for @include or for music files.
+
+PredefinedValues   acts as though the source opened with @set name value for
+                 each pair, which is how to supply the version and date strings
+                 a manual's build normally generates into an included file.
+                 Keys are compared ordinally (case-sensitive), as Texinfo flags
+                 are.
+
+NumberSections   false leaves every heading unnumbered.
+
+ExtraCss         appended after the built-in stylesheet, so a repeated rule of
+                 equal specificity wins. The built-in stylesheet uses the
+                 generic families serif, sans-serif and monospace and carries
+                 no @page rule.
+
+CssFileName / ImageFolderName   derived from the source file's name when left
+                 empty (manual.css and manual-images/ for manual.texi), or
+                 texinfo.css and texinfo-images/ for a document rendered from a
+                 string. Naming the folder after the document keeps two manuals
+                 written into one directory from arguing over a picture they
+                 both call logo.png. A document with no pictures never creates
+                 the folder.
+
+SnippetRenderer  see MUSIC SNIPPETS above.
+
+TexinfoHtmlResult
+-----------------
 
     string Html            //the complete document
     string BodyHtml        //the generated markup on its own
     string Css             //always separate, even when it was embedded
-    string Title           //from @settitle
-    string Author          //from the title page's FIRST @author
-    string BaseDirectory
-    string CssFileName
+    string Title           //from @settitle; "" when there was none
+    string Author          //from the title page's FIRST @author; "" when none
+    string BaseDirectory   //the directory the source was read from
+    string CssFileName     //the name the markup links to
     IReadOnlyList<TexinfoImageReference> Images
     TexinfoRenderWarnings Warnings
 
@@ -532,12 +472,32 @@ document rendered from a string.
     string WriteToDirectory(string directory, string baseName = null)
     int    CopyImagesTo(string directory)
 
-WriteToDirectory creates the directory if needed, writes <baseName>.html,
-writes the stylesheet beside it under CssFileName unless EmitSingleFile was
-set, and copies the document's pictures into it. It returns the full path of
-the HTML file.
+Html is a complete document: with the stylesheet embedded when EmitSingleFile
+was set, otherwise linking to CssFileName. BodyHtml is for a caller assembling
+a page of their own around the generated markup. A title page naming several
+authors still prints them all, but only the first is reported in Author.
 
---- TexinfoImageReference ---
+ToHtmlDocument rebuilds the complete document around a stylesheet of the
+caller's own, embedded in it - the hand-off point for restyling: take Css,
+change it or replace it outright, and pass it back here. Null is treated as an
+empty stylesheet.
+
+WriteToDirectory creates the directory if needed, writes <baseName>.html (UTF-8,
+no byte order mark), writes the stylesheet beside it under CssFileName unless
+EmitSingleFile was set, and copies the document's pictures into it. baseName
+defaults to the source file's name, or to "index" for a document rendered from
+a string. It returns the full path of the HTML file. Throws ArgumentException
+for a blank directory.
+
+CopyImagesTo puts every picture under the relative paths the markup uses,
+creating folders as needed, and returns how many files it wrote. Pictures found
+on disk are copied (overwriting); ones a snippet renderer handed over as bytes
+are written. A picture whose source file no longer exists, or whose destination
+is its own source, is skipped without a count. A document with no pictures
+creates nothing.
+
+TexinfoImageReference
+---------------------
 
     string SourcePath      //where the file was found at render time; "" for a
                            //picture a snippet renderer handed over as bytes
@@ -546,48 +506,348 @@ the HTML file.
     bool   HasContent      //held in memory; there is no file to copy from
     byte[] GetContent()    //a copy of those bytes, or an empty array
 
---- TexinfoRenderWarnings ---
+TexinfoRenderWarnings
+---------------------
 
-    IReadOnlyList<string> Messages
-    int Count
+    IReadOnlyList<string> Messages   //in the order the run produced them
+    int                   Count
 
-Every message is prefixed with its category, which is what a test filters on:
-Include, Conditional, Macro, Value, RawBlockSkipped, Encoding, Syntax,
-UnknownCommand, Reference or Emit.
+Every message has the shape
 
---- ILilypondSnippetRenderer and its five companions ---
+    <Category>: <message> (at <source>:<line>:<column>)
 
-    LilypondSnippetResult Render(LilypondSnippet snippet)
+where <source> is the file path, or a macro-expansion description for text that
+came out of a macro. The leading category word is what to filter on. There are
+ten categories:
 
-    LilypondSnippet         Kind, Source, FileName, FilePath, Options,
-                            IsInline, BaseDirectory, SourceFile, LineNumber
-    LilypondSnippetKind     Music | LilypondFile | MusicXmlFile
-    LilypondSnippetOptions  the named options, plus All and Unrecognized
-    LilypondSnippetImage    FromFile(path) | FromContent(bytes, extension)
-    LilypondSnippetResult   FromFile / FromContent / FromImages / Failed /
-                            NotRendered; Images, ErrorMessage, IsRendered,
-                            IsFailure
+    Include          an @include file, an @image file or a music file named by
+                     a snippet could not be found on the search path, could
+                     not be read, or includes itself; also "@include" with no
+                     file name.
+    Conditional      a conditional block (@ifset, @iftex, @ifnotinfo, ...) is
+                     malformed or unbalanced - a missing @end, an @end with no
+                     opening, a block naming no flag or no format.
+    Macro            a macro definition, redefinition, alias or expansion
+                     problem (@macro, @rmacro, @linemacro, @alias) - a
+                     circular alias chain, an alias that would shadow a
+                     built-in, a call missing arguments.
+    Value            a @value{name} whose flag was never set (the text
+                     "{No value for 'name'}" is left in the output), or a
+                     malformed @set / @value.
+    RawBlockSkipped  a raw output block (@tex, @html, @docbook, ...) or an
+                     @inlineraw was skipped because its content bypasses the
+                     HTML subset this library targets. Expected on most real
+                     manuals; usually harmless.
+    Encoding         @documentencoding declared something other than UTF-8 or
+                     US-ASCII; the text was still read as UTF-8.
+    Syntax           a lexical or structural problem in the source itself - a
+                     block missing its @end, "@" at end of input, @verb with
+                     no brace group. The most numerous category in the code
+                     base, and the one that means the document itself needs
+                     fixing.
+    UnknownCommand   a command the parser does not implement. Its argument
+                     text or block content is kept, so the words survive even
+                     though their meaning is lost.
+    Reference        a node, anchor or cross-reference problem: ONE message
+                     counting the cross references that name a destination the
+                     document does not define (and naming the first), a
+                     destination with no name, or a name defined more than
+                     once (the first definition is kept).
+    Emit             something the emitter understood but could not render as
+                     the source intended and rendered some other way: @math
+                     set as styled text, @printindex or @listoffloats that
+                     printed nothing, a non-preformatted environment inside a
+                     preformatted one, and the four counted music-snippet
+                     conditions (shown as source, renderer failed, unrecognized
+                     options; a missing music file is Include). Kept apart
+                     from UnknownCommand so a document that parsed cleanly can
+                     be told from one that did not.
 
-IsInline says where the snippet SITS (inside a paragraph); Options.Inline is
-the option asking for a small engraving. They are different questions and a
-renderer usually wants both. FilePath is empty when the named file was not
-found, and a renderer handed an empty path should decline rather than guess.
+Filtering by category is a string prefix test:
 
---- TexinfoConditionalProfile ---
+    using System.Linq;
+
+    var syntax = result.Warnings.Messages
+        .Where(m => m.StartsWith("Syntax:", StringComparison.Ordinal))
+        .ToList();
+
+    //everything except the expected raw-block skips
+    var surprises = result.Warnings.Messages
+        .Where(m => !m.StartsWith("RawBlockSkipped:", StringComparison.Ordinal))
+        .ToList();
+
+There is no structured (enum-typed) warning object on this package's public
+surface; the category word at the head of the message is the contract.
+
+TexinfoConditionalProfile
+-------------------------
 
     Print   //@iftex and every @ifnot... branch; the right one for PDF output
-    Html    //@ifhtml on, @ifnothtml off
+    Html    //@ifhtml on, @ifnothtml off; every other format off, its
+            //@ifnot... branch on
 
 Print deliberately reads BOTH @iftex and @ifnottex, because real manuals put
 document structure - most often the @node Top and @top pair the whole document
-hangs from - in the @ifnottex branch. The cost is that a document writing the
-same visible content into both branches contributes it twice.
+hangs from - in the @ifnottex branch, and keep their TeX-only machinery in raw
+@tex blocks, which are skipped anyway. The cost is that a document writing the
+same visible content into both branches contributes it twice. Raw output blocks
+(@tex, @html, ...) are skipped with a RawBlockSkipped warning under EITHER
+profile.
 
---- Driving Html2Pdf by hand ---
+ILilypondSnippetRenderer - the implementer's contract
+-----------------------------------------------------
 
-Reach for CodeBrix.Texinfo2Pdf instead of doing this; it is written below and it
-gets the picture staging right. But a consumer who has the Texinfo2Html package
-alone and wants a PDF does it like this:
+    public interface ILilypondSnippetRenderer
+    {
+        LilypondSnippetResult Render(LilypondSnippet snippet);
+    }
+
+Called once for each DISTINCT snippet (see the cache note under MUSIC
+SNIPPETS), on the thread that is rendering the document. Return the pictures
+it engraved to; LilypondSnippetResult.NotRendered to decline quietly (the
+document falls back to showing the source and no warning is raised - declining
+is a decision, not a fault); or LilypondSnippetResult.Failed(message) to report
+why it could not be done (source is shown and one counted warning names the
+reason). Never throw - an escaping exception is caught and turned into a
+failure, but a returned failure says what went wrong far better than a stack
+trace does.
+
+LilypondSnippet (what an implementation is handed; immutable, created only by
+this library - there is no public constructor)
+
+    LilypondSnippetKind    Kind           //Music | LilypondFile | MusicXmlFile
+    string                 Source         //the music as written, for Kind ==
+                                          //Music; "" for the file kinds
+    string                 FileName       //as the document wrote it, for the
+                                          //file kinds (e.g. "included/bar.ly");
+                                          //"" for Music
+    string                 FilePath       //full path FileName was found at on
+                                          //the search path; "" when NOT found
+    LilypondSnippetOptions Options        //the bracketed options, typed
+    bool                   IsInline       //written inside a paragraph (brace
+                                          //form) rather than standing alone
+    string                 BaseDirectory  //directory the document was read
+                                          //from; "" for a string with none
+    string                 SourceFile     //file the snippet was written in
+    int                    LineNumber     //line it started on, counting from 1
+    string                 ToString()
+
+Source is passed through exactly as the document wrote it; it was captured raw
+and never treated as Texinfo, so an @ or a brace inside it means whatever
+LilyPond says it means. IsInline says where the snippet SITS; Options.Inline is
+the option asking for a small engraving. They are different questions and a
+renderer usually wants both. FilePath is empty when the named file was not
+found - which is not an error here, because a manual may name a file its build
+generates - and a renderer handed an empty path should decline rather than
+guess.
+
+LilypondSnippetKind
+
+    Music          //@lilypond, block form or brace form; source in Source
+    LilypondFile   //@lilypondfile{name}; a LilyPond file to engrave
+    MusicXmlFile   //@musicxmlfile{name}; a MusicXML file to convert and engrave
+
+LilypondSnippetOptions (read-only to a consumer; every setter is internal)
+
+    bool     Quote        //quote: indent from the margin (acted on by the
+                          //document, passed along too)
+    bool     Verbatim     //verbatim: show the source as well (acted on by the
+                          //document)
+    bool     Inline       //inline: a small fragment for the run of the text
+    bool     NoTime       //notime: omit the time signature
+    bool     TexiDoc      //texidoc: the file's own documentation text is
+                          //wanted; only a renderer can read it
+    bool     DocTitle     //doctitle: the file's own title is wanted
+    bool     NoIndent     //noindent, which is indent=0 said as a flag
+    bool?    RaggedRight  //true from ragged-right, false from noragged-right,
+                          //null when neither was written
+    bool?    Fragment     //true from fragment, false from nofragment, null
+                          //when neither
+    int?     Relative     //relative=N; bare "relative" counts as 1; null
+                          //when absent
+    double?  StaffSize    //staffsize=N (fractional allowed); null when absent
+    string   LineWidth    //line-width= exactly as written ("3\cm"); "" absent
+    string   Indent       //indent= as written; "" when absent
+    string   PaperSize    //papersize= ("a5", "a8landscape"); "" when absent
+    string   PaperWidth   //paper-width= as written; "" when absent
+    string   PaperHeight  //paper-height= as written; "" when absent
+    IReadOnlyList<string> All           //every option exactly as written, in
+                                        //the order written, recognized or not
+    IReadOnlyList<string> Unrecognized  //the ones no property above names;
+                                        //still present in All
+    string   ToString()   //"(no options)" or the comma-joined All list
+
+A renderer that understands more than the named properties should read All
+rather than being limited by them.
+
+LilypondSnippetResult (what an implementation returns; construct only through
+the factories)
+
+    static LilypondSnippetResult NotRendered { get; }
+    static LilypondSnippetResult FromFile(string imagePath)
+    static LilypondSnippetResult FromContent(byte[] content, string fileExtension)
+    static LilypondSnippetResult FromImages(IEnumerable<LilypondSnippetImage> images)
+    static LilypondSnippetResult Failed(string message)
+
+    IReadOnlyList<LilypondSnippetImage> Images        //in placement order
+    string                              ErrorMessage  //"" when nothing went wrong
+    bool                                IsRendered    //Images.Count > 0
+    bool                                IsFailure     //ErrorMessage.Length > 0
+
+FromFile and FromContent carry ONE picture. FromImages carries several, placed
+in the order given, which is what a score longer than one page engraves to;
+null entries are dropped, and a null sequence throws ArgumentNullException.
+Failed with a null or blank message substitutes "The snippet could not be
+engraved."; otherwise the message is trimmed and kept.
+
+LilypondSnippetImage (one picture; construct only through the factories)
+
+    static LilypondSnippetImage FromFile(string filePath)
+    static LilypondSnippetImage FromContent(byte[] content, string fileExtension)
+
+    string FilePath        //the file the renderer wrote; "" for bytes
+    string FileExtension   //the format, always with its leading dot
+    bool   HasContent      //given as bytes rather than as a file
+    byte[] GetContent()    //a copy of the bytes, or an empty array for a file
+
+FromFile takes the extension from the file name; a null or blank path throws
+ArgumentException. FromContent's fileExtension may be written with or without
+its dot ("png", ".svg"); it is what the picture is written under, so it has to
+say what the bytes actually are. A null content array throws
+ArgumentNullException; a blank extension throws ArgumentException. A picture
+the renderer wrote to disk keeps its own file name inside the image folder;
+one given as bytes is named by the library.
+
+
+COMPLETE EXAMPLES
+=================
+
+(1) Texinfo file -> HTML + CSS + pictures on disk (this package's headline
+    output, nothing else involved)
+
+    using System;
+    using CodeBrix.Texinfo2Html;
+
+    internal static class Program
+    {
+        private static void Main(string[] args)
+        {
+            var renderer = new TexinfoHtmlRenderer();
+            renderer.Options.PredefinedValues["VERSION"] = "2.1";  //as @set VERSION 2.1
+            renderer.Options.ExtraCss = "h1 { color: #003366; }";
+
+            TexinfoHtmlResult result = renderer.GenerateFromFile("docs/manual.texi");
+
+            Console.WriteLine($"Title: {result.Title}  Author: {result.Author}");
+            Console.WriteLine($"{result.Images.Count} picture(s), {result.Warnings.Count} warning(s)");
+            foreach (string warning in result.Warnings.Messages)
+            {
+                Console.WriteLine("  " + warning);
+            }
+
+            //out/manual.html + out/manual.css + out/manual-images/... - a
+            //complete document, ready to open or to hand to a PDF renderer.
+            string htmlPath = result.WriteToDirectory("out");
+            Console.WriteLine("Wrote " + htmlPath);
+        }
+    }
+
+(2) Source held in memory, as one self-contained file
+
+    using System.IO;
+    using CodeBrix.Texinfo2Html;
+
+    var renderer = new TexinfoHtmlRenderer();
+    renderer.Options.EmitSingleFile = true;      //stylesheet embedded in Html
+    renderer.Options.NumberSections = false;
+
+    string source = "@settitle Notes\n@node Top\n@top Notes\n\n"
+        + "@chapter First\nHello, @emph{world}.\n";
+
+    //null base directory: this source names no files of its own
+    TexinfoHtmlResult result = renderer.Generate(source, null);
+    File.WriteAllText("notes.html", result.Html);   //one file is the whole document
+
+    //the same document written by the library: notes/index.html, no .css file
+    result.WriteToDirectory("notes");
+
+(3) Restyle before writing
+
+    using CodeBrix.Texinfo2Html;
+
+    TexinfoHtmlResult result = new TexinfoHtmlRenderer().GenerateFromFile("manual.texi");
+    string myCss = result.Css.Replace("#111111", "#000033");   //or replace wholesale
+    string html = result.ToHtmlDocument(myCss);                //self-contained
+    result.CopyImagesTo("out");                                //pictures beside it
+    System.IO.File.WriteAllText("out/manual.html", html);
+
+(4) Engraving the music of a .tely manual - a complete ILilypondSnippetRenderer
+
+    using System;
+    using System.IO;
+    using CodeBrix.Texinfo2Html;
+
+    public sealed class MyEngraver : ILilypondSnippetRenderer
+    {
+        public LilypondSnippetResult Render(LilypondSnippet snippet)
+        {
+            if (snippet.Kind != LilypondSnippetKind.Music && snippet.FilePath.Length == 0)
+            {
+                return LilypondSnippetResult.NotRendered;   //file not found: decline
+            }
+            if (snippet.Kind == LilypondSnippetKind.MusicXmlFile)
+            {
+                return LilypondSnippetResult.Failed("MusicXML is not supported by this engraver.");
+            }
+
+            //snippet.Source (Music) or snippet.FilePath (LilypondFile), plus
+            //snippet.Options.Relative, .Fragment, .RaggedRight, .LineWidth,
+            //.StaffSize, .Options.All ... - hand them to your LilyPond driver.
+            byte[] png = MyLilypondDriver.EngraveToPng(snippet);
+            if (png == null)
+            {
+                return LilypondSnippetResult.Failed("LilyPond produced no output.");
+            }
+            return LilypondSnippetResult.FromContent(png, "png");
+
+            //Alternatives:
+            //  return LilypondSnippetResult.FromFile("/tmp/engraved/score-1.png");
+            //  return LilypondSnippetResult.FromImages(new[] {
+            //      LilypondSnippetImage.FromFile("/tmp/engraved/page-1.svg"),
+            //      LilypondSnippetImage.FromFile("/tmp/engraved/page-2.svg") });
+        }
+    }
+
+    var renderer = new TexinfoHtmlRenderer();
+    renderer.Options.SnippetRenderer = new MyEngraver();
+    TexinfoHtmlResult result = renderer.GenerateFromFile("notation.tely");
+    result.WriteToDirectory("out");   //engraved pictures land in out/notation-images/
+
+(5) Warnings as a build gate
+
+    using System;
+    using System.Linq;
+    using CodeBrix.Texinfo2Html;
+
+    TexinfoHtmlResult result = new TexinfoHtmlRenderer().GenerateFromFile("manual.texi");
+    var real = result.Warnings.Messages
+        .Where(m => !m.StartsWith("RawBlockSkipped:", StringComparison.Ordinal))
+        .ToList();
+    if (real.Count > 0)
+    {
+        Console.Error.WriteLine(string.Join(Environment.NewLine, real));
+        Environment.Exit(1);
+    }
+
+(6) Driving CodeBrix.PdfDocCreate.Html2Pdf by hand
+
+Reach for CodeBrix.Texinfo2Pdf.MitLicenseForever instead of doing this; it
+gets the picture staging right and sweeps up after itself. But a consumer who
+has this package plus CodeBrix.PdfDocCreate.Html2Pdf.MitLicenseForever and
+wants a PDF does it like this:
+
+    using CodeBrix.PdfDocCreate.Html2Pdf;
+    using CodeBrix.Texinfo2Html;
 
     //(a) straight to a PDF
     var result = new TexinfoHtmlRenderer().GenerateFromFile("manual.texi");
@@ -608,406 +868,269 @@ Getting that wrong is the usual reason a hand-driven conversion loses its
 pictures, and it is the thing CodeBrix.Texinfo2Pdf takes care of.
 
 
-CORE API REFERENCE - CodeBrix.Texinfo2Pdf
---------------------------------------------------------------------------------
-
-Five public types, all in the CodeBrix.Texinfo2Pdf namespace.
-
---- TexinfoPdfRenderer ---
-
-    var renderer = new TexinfoPdfRenderer();
-
-    // workflow one - source in, PDF out
-    TexinfoPdfResult RenderFile(string texinfoFilePath, string outputPdfPath = null)
-    TexinfoPdfResult RenderTexinfo(string texinfoSource, string outputPdfPath,
-                                   string baseDirectory = null)
-    TexinfoPdfResult RenderFileToBytes(string texinfoFilePath)
-    TexinfoPdfResult RenderTexinfoToBytes(string texinfoSource, string baseDirectory = null)
-
-    // workflow two, step A - source in, markup out
-    TexinfoHtmlResult GenerateHtmlFromFile(string texinfoFilePath)
-    TexinfoHtmlResult GenerateHtml(string texinfoSource, string baseDirectory = null)
-
-    // workflow two, step B - markup back in, PDF out
-    TexinfoPdfResult RenderHtml(TexinfoHtmlResult htmlResult, string outputPdfPath,
-                                string replacementCss = null)
-    TexinfoPdfResult RenderHtmlToBytes(TexinfoHtmlResult htmlResult, string replacementCss = null)
-    TexinfoPdfResult RenderHtmlFile(string htmlFilePath, string outputPdfPath)
-    TexinfoPdfResult RenderHtmlDocument(string html, string outputPdfPath,
-                                        string baseDirectory = null)
-
-    TexinfoPdfOptions Options { get; }
-
-RenderFile with no output path writes the PDF beside the source under the same
-name. Every method that takes an output path CREATES the directory it names, so
-"out/manual.pdf" works without the caller making "out" first.
-
-Nothing about a document's contents throws; both stages degrade and report.
-Exceptions are the caller's own mistakes: ArgumentException for a blank path,
-ArgumentNullException for a null source or result, FileNotFoundException for a
-file that is not there.
-
-One renderer serves many documents. It is not safe across threads, and neither
-are the two renderers it owns.
-
---- TexinfoPdfOptions ---
-
-    TexinfoHtmlOptions  Texinfo    //how the source is read
-    HtmlRenderOptions   Html       //what the PDF looks like
-
-NEITHER IS A COPY. They are the live options objects of the two renderers
-underneath, so every setting either library has - including any it gains later -
-is reachable without a second package reference and without anything here having
-to be kept in step. Do not "improve" this into a copy: the drift is the bug it
-was written to avoid.
-
-Because Html is the live object, everything Html2Pdf exposes is settable here -
-for example Html.SvgRasterScale (SVG picture sharpness, default 2.0) and
-Html.KeepUncoveredCharacters (keep characters no registered font covers as
-visible missing-glyph shapes instead of removing them).
-
-Two defaults differ from bare Html2Pdf, because a printed manual wants them:
-
-    Html.HeaderText = "{title}"
-    Html.FooterText = "{page} / {pages}"
-
-Set either to an empty string to be rid of it. Html.DocumentTitle and
-Html.DocumentAuthor are filled in from the document's own @settitle and @author
-WHEN THE CALLER LEFT THEM EMPTY, and are put back to what the caller had after
-every render - which is what stops one manual's title following a reused
-renderer to the next.
-
---- TexinfoPdfResult ---
-
-    string             OutputFilePath  //"" for a render that produced bytes
-    byte[]             PdfBytes        //null for a render that wrote a file
-    int                PageCount
-    string             Title
-    TexinfoHtmlResult  Intermediate    //null when the caller supplied the markup
-    TexinfoPdfWarnings Warnings
-
-Intermediate is the whole HTML/CSS result the PDF was made from, so a one-shot
-conversion still gives access to the markup, the stylesheet and the picture
-list without running the source twice.
-
---- TexinfoPdfWarnings ---
-
-    IReadOnlyList<string>        Messages         //both stages, each tagged
-    IReadOnlyList<string>        TexinfoMessages  //untagged, as Texinfo2Html wrote them
-    IReadOnlyList<string>        PdfMessages      //untagged, as Html2Pdf wrote them
-    IReadOnlyList<RenderWarning> PdfItems         //the PDF stage's structured warnings
-    int                          Count
-    const string                 TexinfoStageTag = "[texinfo]"
-    const string                 PdfStageTag     = "[pdf]"
-
-PdfItems is the PDF stage's warnings in structured form - each item carries a
-Category enum, a stable machine-readable Code ("font.uncovered.removed",
-"font.svg-text.notdef", "image.format.unsupported", ...), an Occurrences count,
-and - for glyph-coverage warnings - the CodePoint involved. Items are finer-
-grained than the prose: warnings sharing one display message but concerning
-different code points are separate items. That is what lets a test assert an
-exact drop baseline ("these N distinct code points, M occurrences") instead of
-pattern-matching display prose, which is not a compatibility surface. The
-Texinfo stage has no structured form; filter TexinfoMessages by its leading
-category word instead.
-
-Both surfaces pass the PDF stage's text through VERBATIM - nothing is trimmed,
-re-wrapped or re-worded on the way out. That matters most for the Linux
-native-assets guidance, code "image.svg.nativemissing", whose whole value is in
-naming the two packages it names; see the IMPORTANT notice near the top of this
-file. Preserve that behaviour.
-
-A message means a different thing depending on which stage said it - the Texinfo
-stage is talking about the source, the PDF stage about the markup or the fonts -
-so filter on the split lists rather than pattern-matching the merged one. The
-Texinfo stage ran first and is listed first.
-
---- TexinfoPdfFonts ---
-
-Font registration for the PDF stage, forwarded to the Html2Pdf font registry so
-a consumer of this package never has to name Html2Pdf. Registration is
-process-global; all methods are idempotent and may be called before or after
-renders have happened - additions take effect on the next render.
-
-    TexinfoPdfFonts.AddFontDirectory(dir)      //package-shaped font folders
-    TexinfoPdfFonts.AddFontFile(path, includeInFallback = false)
-    TexinfoPdfFonts.AddFontFiles(paths, includeInFallback = false)
-    TexinfoPdfFonts.AddFontFilesFromDirectory(dir, includeInFallback = false)
-    TexinfoPdfFonts.AddFallbackFamily(name)
-
-The AddFontFile family takes loose .ttf/.otf files with NO manifest - family
-name, weight and style are read from the font's own tables - and either path
-separator style works on every operating system. A registered font is usable
-from the generated markup's font families, from SVG text inside placed
-pictures, and (when opted in) from the per-glyph fallback chain consulted for
-characters the styled font lacks. The PDF stage already brings the Roboto,
-Merriweather, Roboto Mono and Noto Music packages along; Noto Music sits in the
-fallback chain automatically, which is what renders a manual's ♭ ♮ ♯ and the
-supplementary-plane music symbols. The PDF stage never falls back to
-operating-system fonts.
-
---- The two workflows ---
-
-    //(a) one shot
-    var result = new TexinfoPdfRenderer().RenderFile("manual.texi", "out/manual.pdf");
-    Console.WriteLine($"{result.PageCount} pages, {result.Warnings.Count} warnings");
-
-    //(b) restyle the intermediate first
-    var renderer = new TexinfoPdfRenderer();
-    var html = renderer.GenerateHtmlFromFile("manual.texi");
-    var myCss = html.Css.Replace("#111111", "#000033");   //or replace wholesale
-    renderer.RenderHtml(html, "out/manual.pdf", myCss);
-
-In workflow (b) the pictures need no handling at all: RenderHtml stages them in
-a temporary directory for the length of the render and sweeps it up afterwards,
-so what lands in "out" is one PDF and nothing else. That is the whole reason
-this library exists rather than a paragraph of instructions.
-
-A caller who would rather edit the files on disk writes the pair out, edits it,
-and comes back in through RenderHtmlFile:
-
-    var html = renderer.GenerateHtmlFromFile("manual.texi");
-    var path = html.WriteToDirectory("work");             //manual.html + manual.css
-    //...edit work/manual.html and work/manual.css by hand...
-    renderer.RenderHtmlFile(path, "out/manual.pdf");
-
-
-REPOSITORY LAYOUT
---------------------------------------------------------------------------------
-
-    CodeBrix.Texinfo.slnx                     Solution - four projects
-
-    src/CodeBrix.Texinfo2Html/                Renders Texinfo to HTML and CSS
-    src/CodeBrix.Texinfo2Pdf/                 Renders Texinfo to PDF
-
-    tests/CodeBrix.Texinfo2Html.Tests/        xUnit v3 tests for Texinfo2Html
-    tests/CodeBrix.Texinfo2Pdf.Tests/         xUnit v3 tests for Texinfo2Pdf
-
-Project relationships:
-
-    CodeBrix.Texinfo2Pdf
-        -> ProjectReference   CodeBrix.Texinfo2Html
-        -> PackageReference   CodeBrix.PdfDocCreate.Html2Pdf.MitLicenseForever
-
-The ProjectReference is what is used for local build and debug. At pack time
-NuGet automatically turns it into a package dependency on
-CodeBrix.Texinfo2Html.MitLicenseForever, using that project's PackageId and
-computed version - so do not add a hand-written PackageReference to
-CodeBrix.Texinfo2Html.MitLicenseForever alongside it.
-
-CodeBrix.Texinfo2Html has no package or project dependencies at all beyond
-.NET itself, and it should stay that way: everything it needs to emit HTML and
-CSS is in the framework, and keeping it dependency-free is what lets a consumer
-take the HTML/CSS path without pulling in the PDF stack.
-
-
-ARCHITECTURE
---------------------------------------------------------------------------------
-
-The split between the two libraries, which is a rule and not just a description:
-
-  CodeBrix.Texinfo2Html owns everything about the Texinfo format - lexing the
-  @-commands, resolving cross references and node structure, handling the .tely
-  dialect's LilyPond blocks, and emitting the HTML and CSS. It knows nothing
-  about PDF.
-
-  CodeBrix.Texinfo2Pdf owns the hand-off to CodeBrix.PdfDocCreate.Html2Pdf and
-  the options that govern the finished document. It knows nothing about the
-  Texinfo format beyond passing the source through to CodeBrix.Texinfo2Html.
-  It has no parsing, no emission and no markup of its own, and it must not
-  acquire any: anything it would need to know about a document belongs on
-  TexinfoHtmlResult instead.
-
-Two things inside CodeBrix.Texinfo2Pdf are less obvious than they look:
-
-  * IT ALWAYS HANDS HTML2PDF A SELF-CONTAINED DOCUMENT. The generated markup
-    links to a stylesheet beside it, which would mean writing that stylesheet
-    somewhere for the render to find. Embedding it instead - ToHtmlDocument
-    with the result's own Css - says exactly the same thing to Html2Pdf and
-    leaves only the pictures needing a home. Do not "fix" this into writing the
-    pair out.
-  * THE PICTURES GO TO A TEMPORARY DIRECTORY, NOT THE OUTPUT ONE. The markup
-    points at them relative to wherever the document is put, so a render from
-    memory needs somewhere for those paths to lead - and a caller who asked for
-    one PDF must not get a folder of pictures next to it. Rendering/
-    ImageStagingArea creates the directory only when the document has pictures
-    at all, and removes it afterwards.
-
-The HTML and CSS that CodeBrix.Texinfo2Html emits is a contract with
-CodeBrix.PdfDocCreate.Html2Pdf, not general-purpose web markup. Html2Pdf applies
-a documented subset of CSS - inline style attributes, style blocks and linked
-local stylesheets, with real selector matching, cascade, specificity and
-inheritance - and it renders all text through the CodeBrix.Platform.Fonts
-packages so output is identical on every operating system. Stay inside that
-subset. When you are unsure whether a construct is supported, check the
-Html2Pdf AGENT-README rather than guessing; markup that a browser tolerates is
-not automatically markup that Html2Pdf renders.
-
-Inside CodeBrix.Texinfo2Html the stages run in one order and each owns one
-sub-folder and matching sub-namespace: Sources -> Lexing -> Preprocessing ->
-Parsing (into Model) -> Semantics -> Emit, with Diagnostics collecting warnings
-throughout. Keep that shape. The parser records only what the source said; the
-semantic pass works out what it meant across the whole document (numbering,
-identifiers, the contents); the emitter writes markup and decides nothing about
-meaning. Only the five public entry-point types sit at the project root.
-
-
-CODING CONVENTIONS (CodeBrix family)
---------------------------------------------------------------------------------
-
-These are family-wide rules. They are not negotiable per-file, and the build is
-configured so that violating most of them produces a warning.
-
-  * Target framework is net10.0 only. No multi-targeting.
-
-  * Nullable reference types are OFF. Never write a '?' on a reference type -
-    no string?, no MyClass?, no object?. Value-type nullables (int?, bool?,
-    DateOnly?, MyEnum?) are fine, because those are Nullable<T>. Never use the
-    null-forgiveness '!' operator, and never add '#nullable enable'.
-
-  * ImplicitUsings are OFF and there are no global usings. Every file declares
-    its own using directives.
-
-  * Namespaces are file-scoped ('namespace CodeBrix.Texinfo2Html.Models;').
-    Never block-scoped.
-
-  * File layout is always: usings first, then the namespace line, then the
-    type. No leading blank line at the top of the file, no using directives
-    below the namespace line, no blank lines inside the using block. System.*
-    usings come first, then the rest, alphabetical within each group.
-
-  * Warnings are fixed at source. Never add <NoWarn>, <WarningLevel>0</>,
-    #pragma warning disable, or any other project-level or file-level
-    suppression to make a warning go away.
-
-  * <GenerateDocumentationFile> is true on both libraries, so CS1591 fires for
-    any undocumented public member. Every public type and every public,
-    protected or protected internal member needs an XML doc comment, including
-    every enum value. Write summaries that say something the identifier does
-    not already say.
-
-  * Tests are xUnit v3 with SilverAssertions. Prefer the fluent form -
-    'actual.Should().Be(expected)' over 'Assert.Equal(expected, actual)'.
-
-  * The copyright string is the fixed literal
-    'Copyright (c) 2026 Jeremy Ellis and contributors'.
-
-  * Do not hardcode a literal <Version> in a packable csproj. Both library
-    csproj files carry the family's canonical date-stamped version block, which
-    computes 1.<years-since-2026>.<day-of-year>.<minute-of-day> from UtcNow at
-    build time. Leave that block alone.
-
-
-TESTING
---------------------------------------------------------------------------------
-
-Each library has exactly one test project, named after it with a .Tests suffix,
-and each library ships an InternalsVisibleTo.cs granting that test project
-access to its internals - so internal helpers can and should be tested directly
-by name.
-
-Test conventions:
-
-  * A test file that covers one class is named <ClassUnderTest>Tests.cs and
-    holds 'public class <ClassUnderTest>Tests'. Files that exercise several
-    classes together, or that hold test helpers, get a descriptive name
-    instead.
-
-  * Method-specific tests are named '<MemberName>_<snake_case_description>'.
-    Tests that are not about one member are pure snake_case.
-
-  * A multi-statement test body carries //Arrange, //Act and //Assert comments.
-    A single-statement test body is expression-bodied instead.
-
-  * Any call inside a test that accepts a CancellationToken must be passed
-    TestContext.Current.CancellationToken, or xUnit1051 fires.
-
-Two suites need the English LilyPond documentation, which is GFDL-licensed and
-so is never committed here. They read it from ~/GitHome/lilypond/Documentation
-and skip cleanly when it is absent:
-
-  LilypondEmitterCorpusGateTests   (CodeBrix.Texinfo2Html.Tests)
-      every manual renders to markup with only the expected warnings; EVERY
-      internal link in the output - contents, cross reference or index line -
-      has a destination in the same document; and the manuals that print an
-      index print one of the expected size.
-
-  TexinfoToPdfGateTests            (CodeBrix.Texinfo2Pdf.Tests)
-      the end-to-end gate: Texinfo -> HTML/CSS -> PDF, with Html2Pdf reporting
-      nothing but font-coverage messages. This is the test that proves the two
-      libraries agree on the markup subset; nothing inside
-      CodeBrix.Texinfo2Html alone can show that. It runs THROUGH THE SHIPPED
-      CodeBrix.Texinfo2Pdf API rather than through a chain the test assembles,
-      so it gates what a consumer actually gets - keep it that way. It also
-      holds the glyph coverage check: no character in a script the
-      CodeBrix.Platform.Fonts packages cover may be dropped from a PDF. The
-      musical accidental signs render through the Noto Music fallback family,
-      so the only thing the corpus drops is a Hebrew lyric quoted inside a
-      snippet - no registered font carries that script, and CodeBrix never
-      falls back to a system font. It leaves the PDFs it built in
-      <temp>/codebrix-texinfo-gate so they can be looked at afterwards.
-
-  NotationStressTests              (CodeBrix.Texinfo2Pdf.Tests)
-      scale. The notation reference is the largest thing either library will be
-      asked to render, and this renders it end to end inside a time budget, then
-      reads it twice over to show a reused renderer accumulates nothing. Its
-      third test needs NO corpus: it renders synthetic manuals of 500 and 2000
-      sections - each with a node, an index entry and a cross reference, the
-      three things looked up across the whole document - and fails if four times
-      the document costs anything like sixteen times the time. That is the test
-      that would actually catch a structure going quadratic; the corpus test
-      would only ever report it as "slow today". The time bounds are loose on
-      purpose and are not to be tightened into something a busy machine trips.
-
-The general-Texinfo commands - the definition family, floats, accents, @verb,
-@acronym, the @inline... conditionals, the user-defined indices and the
-print-shape commands - are covered by one test file per feature area
-(DefinitionCommandTests, FloatTests, AccentCommandTests, InlineCommandTests,
-UserIndexTests, PrintShapeTests), each carrying an original fixture document
-written for it. The LilyPond corpus is no help there BY DEFINITION: those are
-precisely the commands a music manual does not use, so the fixtures are the
-coverage. TexinfoToPdfGateTests holds the one document that uses all of them at
-once and renders it to a real PDF, which is what says the markup they produce is
-inside the Html2Pdf subset.
-
-SnippetToPdfGateTests (CodeBrix.Texinfo2Pdf.Tests) needs no corpus. It registers
-an engraver and proves that what a renderer hands back becomes a picture in a
-real PDF. The picture is BUILT by the test rather than committed - TestPng.Build
-writes a valid PNG from first principles - so the repository carries no binary
-fixture and so the claim being tested is that Html2Pdf really decodes it.
-
-TexinfoPdfRendererTests (CodeBrix.Texinfo2Pdf.Tests) covers the composition
-library's own API from source written for it: both workflows, the options
-reaching both stages, the metadata fill-in and its undo, the stage-tagged
-warning merge, and the caller mistakes that are meant to throw. Two of its tests
-work from a deliberately LONG document, because in a short manual every page
-break is a chapter starting and no change to the stylesheet can move the page
-count - which is what makes a stylesheet assertion look broken when it is not.
-
-Fixtures committed to this repository must be original work written for the
-test, or come from an explicitly MIT, CC0 or public-domain source listed in
-THIRD-PARTY-NOTICES.txt. Nothing GFDL, nothing GPL.
-
-Run the whole suite from the repository root:
-
-    dotnet test --solution CodeBrix.Texinfo.slnx
-
-The test projects run on Microsoft.Testing.Platform (xunit.v3 4.x), which no
-longer supports the legacy VSTest bridge on the .NET 10 SDK. That makes the
-global.json beside the .slnx load-bearing: it selects that runner for
-"dotnet test", has no "sdk" section, and pins no SDK version - runner selection
-is the only thing it is there for. Do NOT delete it. Without it "dotnet test"
-fails outright with "Testing with VSTest target is no longer supported by
-Microsoft.Testing.Platform on .NET 10 SDK and later".
-
-Naming the target explicitly - "--solution <file>.slnx", or "--project
-<file>.csproj" for one project - is the form to prefer and the one to write in
-scripts.
-
-Each test project also builds to an executable, so a single suite can be run
-directly without the SDK test host at all:
-
-    tests/CodeBrix.Texinfo2Pdf.Tests/bin/Debug/net10.0/CodeBrix.Texinfo2Pdf.Tests
-
+MINIMUM VIABLE PROJECT
+======================
+
+texi2html.csproj
+
+    <Project Sdk="Microsoft.NET.Sdk">
+      <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>net10.0</TargetFramework>
+        <Nullable>disable</Nullable>
+        <ImplicitUsings>disable</ImplicitUsings>
+      </PropertyGroup>
+      <ItemGroup>
+        <PackageReference Include="CodeBrix.Texinfo2Html.MitLicenseForever" Version="*" />
+      </ItemGroup>
+    </Project>
+
+Program.cs
+
+    using System;
+    using CodeBrix.Texinfo2Html;
+
+    internal static class Program
+    {
+        private static int Main(string[] args)
+        {
+            if (args.Length < 2)
+            {
+                Console.Error.WriteLine("usage: texi2html <source.texi> <output-dir>");
+                return 2;
+            }
+            TexinfoHtmlResult result = new TexinfoHtmlRenderer().GenerateFromFile(args[0]);
+            string htmlPath = result.WriteToDirectory(args[1]);
+            foreach (string warning in result.Warnings.Messages)
+            {
+                Console.Error.WriteLine(warning);
+            }
+            Console.WriteLine(htmlPath);
+            return 0;
+        }
+    }
+
+    dotnet run -- docs/manual.texi out
+
+No native assets, no fonts, no other packages are needed on any operating
+system. (Replace Version="*" with the current version from nuget.org when you
+pin.)
+
+
+PERFORMANCE TIPS
+================
+
+  * Cost is linear in document size. Reading and parsing the 51,000-line
+    LilyPond notation reference is a fraction of a second; the six-or-so
+    seconds an end-to-end PDF of it takes on a developer laptop are the
+    typesetting, which is the PDF stage's, not this package's. The test suite
+    renders synthetic manuals of 500 and 2,000 sections purely to fail if
+    anything ever goes quadratic.
+  * A reused renderer accumulates nothing between documents; reading the same
+    manual twice through one renderer costs the same both times. Reuse one
+    renderer per thread rather than constructing one per call, but do not
+    share one across threads.
+  * Snippet engraving is cached per distinct snippet for the duration of one
+    render (see MUSIC SNIPPETS), so a manual that repeats a snippet does not
+    pay for it twice. Keep an ILilypondSnippetRenderer cheap to call - it is
+    invoked synchronously on the rendering thread.
+  * WriteToDirectory copies every picture on each call; a caller that renders
+    from memory and already has the pictures in place can skip CopyImagesTo.
+  * A manual of any size is comfortable in a build step or an offline job.
+    Rendering a 965-page manual inside a web request is not what any of this
+    is for.
+
+
+COMMON PITFALLS TO AVOID
+========================
+
+  * TREATING THE OUTPUT AS WEB MARKUP. The HTML and CSS are a contract with
+    CodeBrix.PdfDocCreate.Html2Pdf's documented subset, not general-purpose
+    web markup. It opens in a browser, but that is not what it is for; markup
+    a browser tolerates is not automatically markup Html2Pdf renders, so keep
+    any post-processing inside that subset.
+  * LOSING THE PICTURES. The markup points at <ImageFolderName>/<file>
+    RELATIVE TO THE DOCUMENT, not at where the files were found. Whatever
+    directory the HTML lives in (or is handed to a PDF renderer as the base
+    directory) must be the directory the pictures were copied into.
+    WriteToDirectory does all of it; CopyImagesTo(dir) + the same dir as base
+    directory is the manual equivalent.
+  * EXPECTING result.Html TO LINK TO NOTHING. With EmitSingleFile false (the
+    default), Html links to CssFileName; write the stylesheet beside it
+    (WriteToDirectory does) or use ToHtmlDocument(result.Css) to embed it.
+  * OPTIONS ARE LIVE. renderer.Options is the renderer's own object; whatever
+    you set stays set for every later render through that renderer. Reset what
+    you changed, or use a fresh renderer.
+  * ONE RENDERER PER THREAD. TexinfoHtmlRenderer is not thread-safe.
+  * EXPECTING EXCEPTIONS FOR BAD DOCUMENTS. Nothing about a document's
+    contents throws. Read result.Warnings; a build that wants to fail on
+    problems has to check it (see COMPLETE EXAMPLES (5)).
+  * PATTERN-MATCHING WHOLE WARNING MESSAGES. Message prose is not a
+    compatibility surface; the leading category word is. Filter on
+    "Category:" prefixes.
+  * EXPECTING MUSIC TO BE ENGRAVED. With no SnippetRenderer every snippet is
+    its source text, by design; this package will never run LilyPond.
+  * IMPLEMENTING ILilypondSnippetRenderer TO THROW. Return Failed(...) instead;
+    a thrown exception still becomes a failure, but its message is worse.
+  * CONFUSING snippet.IsInline WITH snippet.Options.Inline. The first is where
+    the snippet sits; the second is a request for a small engraving.
+  * ASSUMING @documentencoding IS OBEYED. It is reported, not obeyed; convert
+    a Latin-1 manual to UTF-8 first.
+  * ASSUMING A FILE PATH IN LilypondSnippet.FilePath. It is "" when the named
+    file was not found; decline rather than guess.
+  * RELATIVE ENTRIES IN IncludeSearchPaths / ImageSearchPaths resolve against
+    the process's current directory, not the document. Use absolute paths.
+  * EXPECTING .pdf VARIANTS OF PICTURES TO BE FOUND. .pdf is not probed (see
+    IMAGES); a manual that only has pdf/NAME will report the image missing.
+  * EXPECTING DOUBLE CONTENT NOT TO APPEAR under the Print profile when a
+    manual writes the same visible text into both @iftex and @ifnottex. Both
+    branches are read, deliberately.
+
+
+WHAT THIS PACKAGE DOES NOT DO
+=============================
+
+  * NO PDF. This package stops at HTML and CSS. The PDF stage is
+    CodeBrix.PdfDocCreate.Html2Pdf, wrapped for Texinfo by
+    CodeBrix.Texinfo2Pdf.MitLicenseForever.
+  * THE TARGET IS ONE PRINTED DOCUMENT. There is no Info output and no
+    split-into-a-website HTML output. @menu is parsed and dropped, and node
+    pointers (next, prev, up) are read and ignored, because a PDF is read front
+    to back and has no navigation to build.
+  * @math and @displaymath are styled text. There is no mathematical
+    typesetter here and there is not going to be one.
+  * @documentencoding is read and reported, NOT obeyed. Source is UTF-8 (or
+    whatever a byte order mark says); see COVERAGE AND SCALE above.
+  * Raw output blocks (@tex, @html, @docbook, ... and @inlineraw) are skipped
+    with a RawBlockSkipped warning under either conditional profile.
+  * A block environment that is NOT preformatted, written inside one that is -
+    an @itemize inside an @display - is not rendered as itself. A list or a
+    table has no representation inside preformatted text, so it degrades with a
+    warning. A PREFORMATTED environment nested in another one does work; see
+    NESTED PREFORMATTED BLOCKS above.
+  * txidefnamenospace is read as it stood at the END of the document, so a
+    document that sets and clears it around one definition gets the setting
+    the last @set left. Setting it once, which is how it is meant to be used,
+    works.
+  * Nothing here engraves music. The seam to do it is defined and wired (see
+    MUSIC SNIPPETS above), but this library will not take on a dependency on
+    LilyPond, so with no renderer registered a snippet is its source text.
+  * Nothing here decodes or rasterizes pictures. Pictures are found, named
+    and copied; decoding is the PDF stage's job.
+  * There is no structured warning object; warnings are strings with a
+    category prefix.
+
+
+WORKING EXAMPLES ON GITHUB
+==========================
+
+The test project for this package is the most complete set of working examples
+of its API. Each file is written against a small original fixture document, so
+every test is self-contained and readable on its own:
+
+    https://github.com/ellisnet/CodeBrix.Texinfo/tree/main/tests/CodeBrix.Texinfo2Html.Tests
+
+    TexinfoHtmlRendererTests.cs      the public API end to end: Generate and
+                                     GenerateFromFile, EmitSingleFile,
+                                     ExtraCss, ToHtmlDocument, WriteToDirectory
+                                     (with and without a stylesheet file, with
+                                     pictures), the exceptions for a blank or
+                                     missing path, section numbering, cross
+                                     references, indices, footnotes, images
+    LilypondSnippetTests.cs          a complete fake ILilypondSnippetRenderer;
+                                     no-renderer fallback, FromContent /
+                                     FromFile / FromImages results, verbatim
+                                     and quote placement, the options and
+                                     position a renderer is given, brace-form
+                                     IsInline, the "% begin verbatim" marker,
+                                     a missing music file
+    LilypondOptionParserTests.cs     every named snippet option and how bare,
+                                     =value, fractional and unknown options
+                                     parse
+    DefinitionCommandTests.cs        @deffn and relatives: categories, typed
+                                     forms, class members, x forms, index
+                                     filing
+    FloatTests.cs                    @float numbering, captions, @listoffloats,
+                                     references to floats
+    AccentCommandTests.cs            accent composition, glyph commands,
+                                     @displaymath as text
+    InlineCommandTests.cs            @verb, @acronym, @abbr, @inlinefmt /
+                                     @inlinefmtifelse / @inlineraw
+    UserIndexTests.cs                @defindex / @defcodeindex, @synindex
+                                     merges, @ftable filing
+    PrintShapeTests.cs               @setchapternewpage, @lowersections /
+                                     @raisesections, @shorttitlepage, @exdent
+    MacroExpansionTests.cs           @macro / @rmacro / @linemacro / @alias
+                                     argument rules and edge cases
+    TexinfoPreprocessorTests.cs      @set / @clear / @value, PredefinedValues,
+                                     the two conditional profiles, @include
+                                     search paths
+    DocumentInvariants.cs            the structural rules every parsed
+                                     document obeys (placement, a real
+                                     sectioning tree, lookup tables that agree
+                                     with it), asserted by the unit tests and
+                                     the corpus gate alike
+
+The corpus gate tests in the same folder (LilypondCorpusGateTests,
+LilypondParserCorpusGateTests, LilypondEmitterCorpusGateTests) run against the
+English LilyPond documentation, which is not in the repository; they show what
+a real 110,000-line manual set expects of the renderer.
+
+
+QUICK REFERENCE CARD
+====================
+
+    dotnet add package CodeBrix.Texinfo2Html.MitLicenseForever
+    using CodeBrix.Texinfo2Html;
+
+    var r = new TexinfoHtmlRenderer();            //one per thread; reusable
+    r.Options.PredefinedValues["VERSION"] = "1.0"; //= @set VERSION 1.0
+    r.Options.IncludeSearchPaths.Add("/abs/dir");  //after source dir + parent
+    r.Options.ImageSearchPaths.Add("/abs/pics");   //after the include paths
+    r.Options.ExtraCss = "...";                    //appended; later rules win
+    r.Options.EmitSingleFile = true;               //embed the stylesheet
+    r.Options.ConditionalProfile = TexinfoConditionalProfile.Print;  //default
+    r.Options.NumberSections = false;
+    r.Options.CssFileName = "style.css";           //else <name>.css / texinfo.css
+    r.Options.ImageFolderName = "pics";            //else <name>-images / texinfo-images
+    r.Options.SnippetRenderer = new MyEngraver();  //ILilypondSnippetRenderer
+
+    TexinfoHtmlResult res = r.GenerateFromFile("manual.texi");
+    TexinfoHtmlResult res = r.Generate(sourceText, baseDirectory /*or null*/);
+
+    res.Html  res.BodyHtml  res.Css  res.Title  res.Author
+    res.BaseDirectory  res.CssFileName  res.Images  res.Warnings
+    string htmlPath = res.WriteToDirectory("out", baseName: null);  //html+css+pictures
+    int n = res.CopyImagesTo("out");                                //pictures only
+    string doc = res.ToHtmlDocument(myCss);                         //self-contained
+
+    res.Warnings.Messages   //"Category: message (at file:line:col)"
+    res.Warnings.Count      //categories: Include Conditional Macro Value
+                            //RawBlockSkipped Encoding Syntax UnknownCommand
+                            //Reference Emit
+    foreach (TexinfoImageReference img in res.Images)
+        img.SourcePath  img.RelativePath  img.IsGenerated  img.HasContent  img.GetContent()
+
+    //snippet seam
+    LilypondSnippetResult Render(LilypondSnippet s)   //implement this
+      s.Kind  s.Source  s.FileName  s.FilePath  s.Options  s.IsInline
+      s.BaseDirectory  s.SourceFile  s.LineNumber
+      s.Options.Quote .Verbatim .Inline .NoTime .TexiDoc .DocTitle .NoIndent
+      s.Options.RaggedRight(bool?) .Fragment(bool?) .Relative(int?) .StaffSize(double?)
+      s.Options.LineWidth .Indent .PaperSize .PaperWidth .PaperHeight .All .Unrecognized
+      return LilypondSnippetResult.FromContent(bytes, "png")
+           | LilypondSnippetResult.FromFile(path)
+           | LilypondSnippetResult.FromImages(IEnumerable<LilypondSnippetImage>)
+           | LilypondSnippetResult.NotRendered
+           | LilypondSnippetResult.Failed("why");
+      LilypondSnippetImage.FromFile(path) | LilypondSnippetImage.FromContent(bytes, ".svg")
+
+    Throws only for caller mistakes: ArgumentException (blank path/dir),
+    ArgumentNullException (null source), FileNotFoundException (missing file).
+    Nothing in a document ever throws - read res.Warnings.
+
+    Linux + SVG + PDF: the PDF stage needs SkiaSharp.NativeAssets.Linux OR
+    SkiaSharp.NativeAssets.Linux.NoDependencies in the APPLICATION. This
+    package alone needs nothing.
 
 ================================================================================
