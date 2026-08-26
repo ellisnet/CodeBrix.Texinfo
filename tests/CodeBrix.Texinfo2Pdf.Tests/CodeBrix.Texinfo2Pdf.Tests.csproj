@@ -12,18 +12,6 @@
     </PackageReference>
     <PackageReference Include="xunit.v3" Version="4.0.0" />
     <PackageReference Include="SilverAssertions.ApacheLicenseForever" Version="1.0.164.180" />
-    <!--
-      A SkiaSharp Linux native-assets package is needed for the SVG tests to render on a Linux
-      platform, and its presence here should not cause problems for Windows or Mac.
-      Texinfo2Pdf reaches SkiaSharp through Html2Pdf's SVG path (CodeBrix.SkiaSvg), and
-      CodeBrix.PdfDocCreate.Html2Pdf deliberately does not declare the Linux native-assets
-      dependency itself - so neither does CodeBrix.Texinfo2Pdf; see the note in that project's
-      .csproj.
-      The ".NoDependencies" variant is chosen here only because it is self-contained on this
-      build machine. It is NOT a recommendation: SkiaSharp.NativeAssets.Linux would serve these
-      tests equally well. This reference belongs ONLY in tests/, never in src/.
-    -->
-    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="4.151.0" />
   </ItemGroup>
 
   <ItemGroup>

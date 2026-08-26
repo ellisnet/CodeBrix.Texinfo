@@ -78,23 +78,15 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="CodeBrix.PdfDocCreate.Html2Pdf.MitLicenseForever" Version="1.0.232.1177" />
     <!--
-      IMPORTANT NOTE: CodeBrix.Texinfo2Pdf *cannot* have a declared dependency on
-      SkiaSharp.NativeAssets.Linux or SkiaSharp.NativeAssets.Linux.NoDependencies - even though
-      it *does* require one of these, when running on Linux and the Texinfo source embeds SVG
-      images. The requirement is inherited from CodeBrix.PdfDocCreate.Html2Pdf, which
-      deliberately does not declare it either.
-      Two mutually exclusive Linux native-assets variants exist and only the consuming
-      application can choose between them; declaring one here would force that choice on every
-      consumer of the CodeBrix.Texinfo2Pdf.MitLicenseForever nuget package and conflict with
-      applications that already reference the other variant.
-      So, for the CodeBrix.Texinfo2Pdf.MitLicenseForever nuget package to render SVG content on
-      Linux, the consuming application *must* have its own dependency on either
-      SkiaSharp.NativeAssets.Linux or SkiaSharp.NativeAssets.Linux.NoDependencies.
-      Do NOT "fix" this by adding a PackageReference here.
+      The PDF stage. From 1.0.238.580 Html2Pdf is fully managed - its SVG engine is
+      CodeBrix.Imaging.Drawing.NoSkia, with no SkiaSharp and no native library of any
+      kind - and it places SVG as PDF VECTOR content by default (HtmlRenderOptions.
+      SvgPlacement, reachable here as Options.Html.SvgPlacement). Nothing extra is
+      needed on any operating system; the former Linux native-assets requirement is
+      gone, and no PackageReference for one belongs here or in any consumer.
     -->
-    <!--<PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="4.151.0" />-->
+    <PackageReference Include="CodeBrix.PdfDocCreate.Html2Pdf.MitLicenseForever" Version="1.0.238.580" />
   </ItemGroup>
 
   <ItemGroup>

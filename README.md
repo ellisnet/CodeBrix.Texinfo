@@ -9,65 +9,36 @@ CodeBrix.Texinfo supports applications and assemblies that target Microsoft .NET
 Microsoft .NET version 10.0 is a Long-Term Supported (LTS) version of .NET, and was released on Nov 11, 2025; and will be actively supported by Microsoft until Nov 14, 2028.
 Please update your C#/.NET code and projects to the latest LTS version of Microsoft .NET.
 
-## ⚠️ Important for Linux: SVG rendering needs a SkiaSharp native-assets package
+## Fully managed on every operating system
 
-**If your application runs on Linux and converts Texinfo documents that embed SVG pictures**
-through `CodeBrix.Texinfo2Pdf` - or feeds `CodeBrix.Texinfo2Html` output to
-`CodeBrix.PdfDocCreate.Html2Pdf` yourself - your application must reference **one** of these two
-NuGet packages itself:
+Both libraries are pure managed .NET. There is no native library, no runtime identifier and no
+`apt`/`brew`/`msi` step anywhere in the chain, on Windows, macOS or Linux - the NuGet packages are
+all an application needs. `CodeBrix.Texinfo2Html` only emits HTML and CSS and rasterizes nothing,
+and the PDF stage underneath `CodeBrix.Texinfo2Pdf` - `CodeBrix.PdfDocCreate.Html2Pdf` - draws SVG
+with `CodeBrix.Imaging.Drawing.NoSkia`, so a document's SVG pictures render identically everywhere
+with nothing extra to install or reference.
 
-```
-dotnet add package SkiaSharp.NativeAssets.Linux
-```
+**SVG pictures land in the PDF as vector content by default.** Paths, strokes, dashes, clips,
+gradients and group opacity become PDF drawing operators, and SVG text becomes real PDF text in an
+embedded font - so it stays sharp at any zoom, and remains selectable and searchable. Only a part
+that PDF cannot express - an image filter such as a blur, Porter-Duff compositing, a difference
+clip, a repeating gradient, a gradient whose stops differ in alpha, or a pattern fill - is
+rasterized on its own, and that is reported as a warning with the code `image.svg.rasterized`.
 
-**or**
-
-```
-dotnet add package SkiaSharp.NativeAssets.Linux.NoDependencies
-```
-
-**Either package works equally well - neither is recommended over the other.** Reference exactly
-one, whichever suits your application. **If your application already references one of them for its
-own reasons, keep that one** - nothing needs to change, and you should not swap it for the other,
-and you certainly do not need both.
-
-The two differ only in how the native library obtains font services: `SkiaSharp.NativeAssets.Linux`
-links against the system `libfontconfig`, while `SkiaSharp.NativeAssets.Linux.NoDependencies` is
-self-contained. That difference does not affect this conversion, which never consults system fonts,
-so the choice is yours to make on your own deployment grounds.
-
-**Windows and macOS require nothing extra** - SkiaSharp supplies those native binaries through its
-own package. This requirement applies to Linux only, and only when a document actually contains SVG
-content.
-
-**`CodeBrix.Texinfo2Html` on its own needs nothing.** It only emits HTML and CSS and never
-rasterizes anything, so it never touches SkiaSharp. The requirement arrives with the PDF stage.
-
-**Why isn't this just a package dependency?** Two mutually exclusive Linux native-assets variants
-exist, and only the consuming application can decide which one it wants. `CodeBrix.Texinfo2Pdf`
-therefore does not declare either one - and neither does `CodeBrix.PdfDocCreate.Html2Pdf`
-underneath it - because declaring one would force that choice on every consumer and conflict with
-applications that already reference the other. So the choice is deliberately left to you.
-
-**What happens if it is missing?** Nothing crashes and nothing throws. SVG pictures are skipped and
-the rest of the document renders normally into a complete PDF. The skip is reported through the
-conversion's collected warnings, so if SVG content is unexpectedly absent from your PDF, inspect
-`result.Warnings`:
+To embed SVG as a bitmap instead, set the PDF stage's placement mode - the option object is the
+PDF renderer's own, so no extra package reference is involved:
 
 ```csharp
-var result = new TexinfoPdfRenderer().RenderFile("manual.texi", "out/manual.pdf");
+using CodeBrix.PdfDocCreate.Html2Pdf;
 
-//the guidance message, tagged [pdf] - or use result.Warnings.PdfMessages for it untagged
-foreach (var warning in result.Warnings.Messages) { Console.WriteLine(warning); }
-
-//or test for it exactly, by its stable code
-bool svgSkipped = result.Warnings.PdfItems.Any(i => i.Code == "image.svg.nativemissing");
+var renderer = new TexinfoPdfRenderer();
+renderer.Options.Html.SvgPlacement = SvgPlacementMode.Raster;   //default is Vector
+renderer.Options.Html.SvgRasterScale = 3.0;                     //default 2.0
 ```
 
-Every SVG in the document fails for the same one environmental reason, so they collapse into a
-single warning whose `Occurrences` count says how many pictures were skipped. The message itself
-names `CodeBrix.PdfDocCreate.Html2Pdf` rather than `CodeBrix.Texinfo2Pdf`, because that is the
-library underneath doing the rasterizing - the packages to add are the same two either way.
+`SvgRasterScale` is the picture's pixel density in `Raster` mode. In `Vector` mode it applies only
+to a part that had to fall back to a raster, and does nothing at all to a picture that stays
+entirely vector.
 
 ## Project status
 
@@ -95,7 +66,7 @@ A convenience library that performs the whole conversion in one step. It renders
 
 `CodeBrix.Texinfo2Pdf.MitLicenseForever` depends on `CodeBrix.Texinfo2Html.MitLicenseForever` and on `CodeBrix.PdfDocCreate.Html2Pdf.MitLicenseForever`, so installing it brings the whole conversion chain with it.
 
-On Linux, an application using this package to convert documents that contain SVG pictures must also reference `SkiaSharp.NativeAssets.Linux` or `SkiaSharp.NativeAssets.Linux.NoDependencies` itself — either one, never both. That dependency is real but undeclared, deliberately; see the important note near the top of this document.
+Nothing else is needed, on any operating system: the whole chain is managed code, and a document's SVG pictures are placed into the PDF as vector content — see the note near the top of this document.
 
 NuGet package: `CodeBrix.Texinfo2Pdf.MitLicenseForever`
 

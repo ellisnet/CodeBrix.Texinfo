@@ -13,10 +13,9 @@
     <PackageReference Include="xunit.v3" Version="4.0.0" />
     <PackageReference Include="SilverAssertions.ApacheLicenseForever" Version="1.0.164.180" />
     <!--
-      No SkiaSharp native-assets package is referenced here on purpose. CodeBrix.Texinfo2Html
-      only emits HTML and CSS - it never rasterizes anything, so it never touches SkiaSharp.
-      The Linux native-assets requirement belongs to CodeBrix.PdfDocCreate.Html2Pdf, which
-      CodeBrix.Texinfo2Pdf references; see that project's .Tests .csproj.
+      No native package of any kind is referenced here, and none is needed anywhere in
+      this repository any more: CodeBrix.Texinfo2Html only emits HTML and CSS, and the PDF
+      stage (CodeBrix.PdfDocCreate.Html2Pdf) is fully managed since 1.0.238.580.
     -->
   </ItemGroup>
 

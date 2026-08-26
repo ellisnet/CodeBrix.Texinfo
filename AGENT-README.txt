@@ -57,8 +57,8 @@ Namespace:      CodeBrix.Texinfo2Html
 License:        MIT
 Dependencies:   none - nothing beyond .NET itself, on any operating system.
 Requirements:   none. This package emits HTML and CSS and never rasterizes
-                anything, so it never touches SkiaSharp and needs no native
-                assets on any platform, Linux included.
+                anything, so it needs no native assets on any platform. Neither
+                does the PDF stage - see below.
 
 The package id carries the ".MitLicenseForever" suffix but the assembly and the
 namespace do NOT - they are simply CodeBrix.Texinfo2Html. The suffix is a
@@ -70,11 +70,10 @@ when you want to post-process the markup before it is rendered to PDF. Install
 CodeBrix.Texinfo2Pdf.MitLicenseForever instead when you want a PDF; it depends
 on this package and brings it along.
 
-If you hand this package's output to CodeBrix.PdfDocCreate.Html2Pdf yourself
-and the document embeds SVG pictures, then ON LINUX the application must
-reference SkiaSharp.NativeAssets.Linux or SkiaSharp.NativeAssets.Linux.NoDependencies
-itself - either one, never both. That requirement belongs to the PDF stage, not
-to this package; the Texinfo2Pdf AGENT-README explains it in full.
+If you hand this package's output to CodeBrix.PdfDocCreate.Html2Pdf yourself,
+that stage needs nothing extra either: it is fully managed, draws SVG with
+CodeBrix.Imaging.Drawing.NoSkia, and places SVG pictures into the PDF as vector
+content by default. The Texinfo2Pdf AGENT-README explains it in full.
 
 
 KEY NAMESPACES / USINGS
@@ -1129,8 +1128,8 @@ QUICK REFERENCE CARD
     ArgumentNullException (null source), FileNotFoundException (missing file).
     Nothing in a document ever throws - read res.Warnings.
 
-    Linux + SVG + PDF: the PDF stage needs SkiaSharp.NativeAssets.Linux OR
-    SkiaSharp.NativeAssets.Linux.NoDependencies in the APPLICATION. This
-    package alone needs nothing.
+    SVG + PDF: nothing extra on any OS. The PDF stage is fully managed and
+    places SVG into the PDF as vector content by default; this package alone
+    needs nothing either.
 
 ================================================================================

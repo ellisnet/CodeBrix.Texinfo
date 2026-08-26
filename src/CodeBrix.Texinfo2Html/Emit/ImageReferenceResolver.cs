@@ -18,7 +18,7 @@ namespace CodeBrix.Texinfo2Html.Emit;
 internal sealed class ImageReferenceResolver
 {
     //Every format the PDF stage can place: the CodeBrix.Imaging decoder set plus SVG,
-    //which Html2Pdf rasterizes itself. Never add .pdf here - a manual that keeps
+    //which Html2Pdf places as vector content. Never add .pdf here - a manual that keeps
     //pdf/NAME variants for its TeX branch would then hand Html2Pdf a file it cannot
     //decode.
     private static readonly string[] CandidateExtensions =

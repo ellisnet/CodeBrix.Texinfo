@@ -28,7 +28,7 @@ public class PdfFeaturePassThroughTests
     public void An_svg_image_referenced_by_a_manual_travels_into_the_pdf()
     {
         //Arrange - @image names the file without an extension; .svg must be probed,
-        //staged beside the document, and rasterized by the PDF stage.
+        //staged beside the document, and placed by the PDF stage (as vector content).
         string directory = Directory.CreateTempSubdirectory("texinfo-svg-image-").FullName;
         try
         {
@@ -54,17 +54,15 @@ public class PdfFeaturePassThroughTests
     }
 
     [Fact]
-    public void An_svg_picture_reports_no_missing_native_warning_when_the_native_assets_are_present()
+    public void An_svg_picture_needs_no_native_library_and_lands_as_vector_content()
     {
-        //Arrange - the canary for the Linux native-assets requirement. SVG rasterization is
-        //the one part of the conversion that needs the SkiaSharp native, and on Linux that
-        //native arrives only from a package the CONSUMER references; this test project
-        //references one precisely so this passes here. An application that references none
-        //gets "image.svg.nativemissing" instead, its picture skipped and the rest of its PDF
-        //intact - which is what the IMPORTANT notice in README.md and AGENT-README.txt is
-        //about. If this starts failing on Linux, the native-assets PackageReference has gone
-        //missing from THIS .csproj; do NOT "fix" it by adding one to src/.
-        string directory = Directory.CreateTempSubdirectory("texinfo-svg-native-").FullName;
+        //Arrange - the successor of the old Linux native-assets canary. The PDF stage's SVG
+        //engine is fully managed, so a picture renders on every operating system with no
+        //package the consumer has to add, and it is placed as PDF vector content: no image
+        //XObject in the file, no warning of any kind. If an image XObject or a warning ever
+        //appears here, the PDF stage has changed its SVG placement and this package's
+        //documentation is wrong.
+        string directory = Directory.CreateTempSubdirectory("texinfo-svg-vector-").FullName;
         try
         {
             File.WriteAllText(Path.Combine(directory, "note.svg"), RedSquareSvg);
@@ -76,10 +74,9 @@ public class PdfFeaturePassThroughTests
                 Path.Combine(directory, "manual.pdf"));
 
             //Assert
-            pdf.Warnings.PdfItems.Any(i => i.Code == "image.svg.nativemissing")
-                .Should().BeFalse();
-            pdf.Warnings.Messages.Any(m => m.Contains("SkiaSharp.NativeAssets.Linux",
-                StringComparison.Ordinal)).Should().BeFalse();
+            pdf.Warnings.PdfItems.Count.Should().Be(0);
+            string text = System.Text.Encoding.Latin1.GetString(File.ReadAllBytes(pdf.OutputFilePath));
+            System.Text.RegularExpressions.Regex.IsMatch(text, @"/Subtype\s*/Image\b").Should().BeFalse();
         }
         finally
         {

@@ -181,14 +181,15 @@ Design decisions in the emitter that look like bugs and must NOT be "fixed":
   * WARNINGS, NEVER EXCEPTIONS, for anything in a document. Exceptions are for
     caller mistakes only (blank path, missing file, null argument).
 
-The Linux SkiaSharp native-assets requirement is DELIBERATELY undeclared. Two
-mutually exclusive variants exist (SkiaSharp.NativeAssets.Linux and
-SkiaSharp.NativeAssets.Linux.NoDependencies), only the consuming application
-can choose between them, and CodeBrix.PdfDocCreate.Html2Pdf underneath does
-not declare one either. Do NOT "fix" this by adding a PackageReference to
-src/CodeBrix.Texinfo2Pdf; the commented-out reference and the explanatory
-comment in that csproj are there to stop exactly that. The consumer-facing
-explanation lives in src/CodeBrix.Texinfo2Pdf/AGENT-README.txt and README.md.
+NO NATIVE PACKAGE MAY BE ADDED ANYWHERE IN THIS REPOSITORY. From
+CodeBrix.PdfDocCreate.Html2Pdf 1.0.238.580 the PDF stage draws SVG with
+CodeBrix.Imaging.Drawing.NoSkia - no SkiaSharp, no native library of any kind,
+on any operating system - and places SVG into the PDF as vector content by
+default. Do NOT add a native-assets PackageReference to src/, to tests/, or to
+any sample or consuming application; the explanatory comment in
+src/CodeBrix.Texinfo2Pdf/CodeBrix.Texinfo2Pdf.csproj is there to stop exactly
+that. The consumer-facing explanation lives in
+src/CodeBrix.Texinfo2Pdf/AGENT-README.txt and README.md.
 
 
 BUILDING
@@ -249,13 +250,12 @@ Test conventions:
   * Tests use SilverAssertions; prefer the fluent form -
     'actual.Should().Be(expected)' over 'Assert.Equal(expected, actual)'.
 
-NATIVE ASSETS IN THE TEST PROJECTS: tests/CodeBrix.Texinfo2Pdf.Tests carries a
-PackageReference to SkiaSharp.NativeAssets.Linux.NoDependencies so the suite's
-SVG tests pass on Linux. That is NOT a recommendation of that variant - the
-other one would serve equally well; it was chosen only because it is
-self-contained on the build machine - and that reference belongs ONLY in
-tests/, never in src/. tests/CodeBrix.Texinfo2Html.Tests deliberately has no
-such reference, because nothing in that library reaches SkiaSharp.
+NO NATIVE ASSETS IN THE TEST PROJECTS: tests/CodeBrix.Texinfo2Pdf.Tests used to
+carry a PackageReference to SkiaSharp.NativeAssets.Linux.NoDependencies so its
+SVG tests would pass on Linux. That reference has been REMOVED: the PDF stage is
+fully managed now, so the SVG tests pass on every operating system with nothing
+added. tests/CodeBrix.Texinfo2Html.Tests never had one. Do not add one to
+either.
 
 THE CORPUS (optional, external, never committed): several suites need the
 English LilyPond documentation, which is GFDL-licensed and so is never
@@ -338,7 +338,9 @@ which is what makes a stylesheet assertion look broken when it is not.
 
 PdfFeaturePassThroughTests (Texinfo2Pdf.Tests) proves the live Options.Html
 pass-through, the structured PdfItems, the TexinfoPdfFonts forwarding and the
-SVG/WebP picture path - including the "image.svg.nativemissing" behaviour.
+SVG/WebP picture path - including the vector-SVG canary
+(An_svg_picture_needs_no_native_library_and_lands_as_vector_content: zero PDF
+warnings and no image XObject in the file).
 
 LibraryPackagingSmoke (both test projects) checks that the assembly loads,
 carries the date-stamped version, exposes its internals to the test assembly,
@@ -468,9 +470,9 @@ NOTES
     repository.
   * The TestResults/ folder at the root is created locally by "dotnet test"
     and holds nothing that belongs in source control.
-  * The Texinfo2Pdf test project's SkiaSharp native-assets reference and the
-    commented-out one in src/CodeBrix.Texinfo2Pdf/CodeBrix.Texinfo2Pdf.csproj
-    are the two places a future maintainer is most likely to "helpfully"
-    change; both carry comments explaining why they must stay as they are.
+  * NO NATIVE PACKAGE ANYWHERE. Neither project, neither test project, and no
+    consuming application needs a native-assets reference; the whole chain is
+    managed code. A maintainer who "helpfully" adds one is undoing the change
+    that removed them - the csproj comment in src/CodeBrix.Texinfo2Pdf says so.
 
 ================================================================================

@@ -119,8 +119,9 @@ public class SnippetToPdfGateTests
             HtmlRenderResult pdf = new HtmlPdfRenderer().RenderFile(htmlPath,
                 Path.Combine(directory, "tunes.pdf"));
 
-            //Assert - the SVG files are written beside the document and rasterized into the PDF;
-            //a picture Html2Pdf could not render would be reported as a warning.
+            //Assert - the SVG files are written beside the document and placed into the PDF
+            //as vector content (no image XObject); a picture Html2Pdf could not render, or
+            //had to rasterize, would be reported as a warning.
             renderer.Calls.Should().Be(3);
             result.Images.Count.Should().Be(3);
             result.Images.All(i => i.RelativePath.EndsWith(".svg", System.StringComparison.Ordinal))
@@ -128,6 +129,8 @@ public class SnippetToPdfGateTests
             pdf.Warnings.Count.Should().Be(0);
             pdf.PageCount.Should().BeGreaterThanOrEqualTo(1);
             new FileInfo(pdf.OutputFilePath).Length.Should().BeGreaterThan(1_000);
+            string text = System.Text.Encoding.Latin1.GetString(File.ReadAllBytes(pdf.OutputFilePath));
+            System.Text.RegularExpressions.Regex.IsMatch(text, @"/Subtype\s*/Image\b").Should().BeFalse();
         }
         finally
         {

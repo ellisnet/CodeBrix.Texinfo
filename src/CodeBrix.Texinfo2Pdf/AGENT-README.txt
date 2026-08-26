@@ -37,61 +37,64 @@ Provenance: an original implementation; no third-party source is incorporated.
 
 
 ################################################################################
-## IMPORTANT - LINUX ONLY: SVG RENDERING NEEDS A SkiaSharp NATIVE-ASSETS PACKAGE
+## NO NATIVE DEPENDENCIES - AND SVG LANDS IN THE PDF AS VECTOR CONTENT
 ################################################################################
 
-If the application runs on LINUX and converts Texinfo documents that embed SVG
-pictures, the APPLICATION must reference ONE of these two NuGet packages
-itself:
+Every part of this conversion is managed code, on every operating system.
+Texinfo2Html emits HTML and CSS and rasterizes nothing; the PDF stage
+underneath - CodeBrix.PdfDocCreate.Html2Pdf - draws SVG with
+CodeBrix.Imaging.Drawing.NoSkia. There is NO SkiaSharp, no native library, no
+GPU, no window system and no system font anywhere in the chain, so Windows,
+macOS and Linux need NOTHING beyond the NuGet packages themselves: no
+apt/brew/msi step, no runtime identifier, no native-assets package. Do not add
+one - not here, not in a consuming application - and do not report the absence
+of one as a missing dependency.
 
-    SkiaSharp.NativeAssets.Linux
-    SkiaSharp.NativeAssets.Linux.NoDependencies
+  UPGRADING: this package pins CodeBrix.PdfDocCreate.Html2Pdf 1.0.238.580 (the
+  version in its csproj). Earlier releases of that stage rasterized SVG
+  through a Skia-based engine, and asked Linux applications to reference
+  SkiaSharp.NativeAssets.Linux or ...Linux.NoDependencies themselves. That
+  requirement is GONE. An application that referenced one of those packages
+  ONLY for this conversion can drop the reference; one that uses it for its
+  own reasons can keep it, and nothing here changes. The warning code
+  "image.svg.nativemissing" is RETIRED and can no longer be raised - delete
+  any code that pattern-matches it.
 
-  dotnet add package SkiaSharp.NativeAssets.Linux
-    -- OR --
-  dotnet add package SkiaSharp.NativeAssets.Linux.NoDependencies
+HOW SVG REACHES THE PAGE. By default the picture's drawing commands are written
+into the page as PDF operators: paths, fills, strokes, dashes, clips,
+transforms, gradients as PDF shading patterns, group opacity as a PDF
+transparency group, and SVG <text> as REAL PDF text in the embedded face. The
+picture stays sharp at any zoom, its text stays selectable and searchable, and
+NO image XObject is added to the file.
 
-EITHER package works equally well - neither is recommended over the other.
-Reference exactly ONE, whichever suits the application. If the application
-already references one of them for its own reasons, KEEP THAT ONE; nothing needs
-to change, it must not be swapped for the other, and BOTH are never needed.
+The mode is the PDF stage's own option, reachable through this package without
+a second package reference:
 
-The two differ only in how the native obtains font services - the plain variant
-links against the system libfontconfig, the ".NoDependencies" variant is
-self-contained - and that difference does not affect this conversion, which
-never consults system fonts. Choose on the application's own deployment grounds.
+    using CodeBrix.PdfDocCreate.Html2Pdf;   //only to NAME SvgPlacementMode
 
-WINDOWS and macOS need NOTHING extra - SkiaSharp's own package brings those
-natives transitively.
+    var renderer = new TexinfoPdfRenderer();
+    renderer.Options.Html.SvgPlacement = SvgPlacementMode.Raster;  //default Vector
+    renderer.Options.Html.SvgRasterScale = 3.0;                    //default 2.0
 
-WHY this is not just a package dependency: this package DELIBERATELY does not
-declare a dependency on either native-assets package, and neither does
-CodeBrix.PdfDocCreate.Html2Pdf underneath it. Two mutually exclusive Linux
-variants exist, and only the consuming application can choose between them;
-declaring one here would force that choice on every consumer and break
-applications that already reference the other. This is a deliberate design
-decision. Do not report it as a missing dependency.
+    public enum SvgPlacementMode { Vector = 0, Raster = 1 }
 
-WHAT HAPPENS IF IT IS MISSING: nothing crashes and nothing throws. SVG pictures
-are skipped and the rest of the document renders normally into a complete PDF.
-The skip arrives as a collected PDF-stage warning with the stable code
-"image.svg.nativemissing", whose message names both packages:
+  Vector (the default)  vector content, as described above.
+  Raster                the whole picture is rasterized to a transparent PNG in
+                        managed code and embedded as a bitmap - the placement
+                        every release before the vector route used.
 
-    var result = new TexinfoPdfRenderer().RenderFile("manual.texi", "out.pdf");
+SvgRasterScale is relative to the SVG's natural CSS-pixel size (2.0 is about
+192 DPI), is clamped to 0.25-8.0, and never changes the PLACED size of the
+picture. In Raster mode it sets the whole picture's density. In VECTOR mode it
+applies ONLY to a part PDF cannot express - an image filter such as a blur,
+Porter-Duff compositing, a difference clip, a repeating or reflecting gradient,
+a gradient whose stops differ in alpha, or a pattern fill. Such a part is
+rasterized on its own, the rest of the picture stays vector, and the fallback
+is reported as a PDF-stage warning with the code "image.svg.rasterized". A
+picture that stays entirely vector is untouched by the setting.
 
-    result.Warnings.Messages       //the guidance, prefixed "[pdf] [image] "
-    result.Warnings.PdfMessages    //the same message, untagged
-    result.Warnings.PdfItems       //structured; .Code == "image.svg.nativemissing"
-
-Every SVG in the document fails for the same one environmental reason, so they
-collapse into a SINGLE warning whose .Occurrences count reports how many
-pictures were skipped. The message text names CodeBrix.PdfDocCreate.Html2Pdf
-rather than CodeBrix.Texinfo2Pdf, because that is the library underneath doing
-the rasterizing - the two packages to add are the same either way. Do not
-rewrite or re-wrap that message when surfacing it; pass it through verbatim.
-
-Bitmap pictures (PNG, JPEG, WebP and the rest) are unaffected on every
-operating system; only SVG needs the natives.
+Bitmap pictures (PNG, JPEG, WebP and the rest) are placed as bitmaps, exactly
+as before, on every operating system.
 
 ################################################################################
 
@@ -110,10 +113,9 @@ Dependencies:   CodeBrix.Texinfo2Html.MitLicenseForever
                 (and, through Html2Pdf, its own dependencies including the
                 CodeBrix.Platform.Fonts packages the PDF is set in: Roboto,
                 Merriweather, RobotoMono and NotoMusic)
-Requirements:   ON LINUX, for documents with SVG pictures only: the
-                application must reference SkiaSharp.NativeAssets.Linux OR
-                SkiaSharp.NativeAssets.Linux.NoDependencies (see the notice
-                above). Nothing else on any platform.
+Requirements:   none, on any operating system. No native-assets package, no
+                runtime identifier, no system font, no apt/brew/msi step
+                (see the notice above).
 
 Installing this one package brings the whole conversion chain with it. You do
 not need a separate reference to CodeBrix.Texinfo2Html.MitLicenseForever: its
@@ -267,8 +269,12 @@ constructed:
                                             //fetched; Texinfo documents never
                                             //produce them anyway
     bool    GenerateOutline         true    //PDF bookmark pane from h1-h6
-    double  SvgRasterScale          2.0     //SVG sharpness; clamped to
-                                            //0.25 - 8.0 at render time
+    SvgPlacementMode SvgPlacement   Vector  //Vector | Raster - see the
+                                            //notice at the top of this file
+    double  SvgRasterScale          2.0     //clamped to 0.25 - 8.0; the whole
+                                            //picture's density in Raster mode,
+                                            //and only a raster fallback's in
+                                            //Vector mode
     bool    KeepUncoveredCharacters false   //see below
     string  DocumentTitle           null    //filled from @settitle when empty
     string  DocumentAuthor          null    //filled from first @author when empty
@@ -363,23 +369,37 @@ occurrences") instead of pattern-matching display prose, which is not a
 compatibility surface. Codes ARE a compatibility surface. The codes this
 package's own documentation and tests rely on:
 
-    image.svg.nativemissing     SVG skipped: no SkiaSharp Linux native assets
-                                (see the IMPORTANT notice)
-    font.uncovered.removed      a character no registered font covers was
-                                removed (KeepUncoveredCharacters = false)
-    font.uncovered.kept         ... was kept as a missing-glyph shape
-                                (KeepUncoveredCharacters = true)
-    font.svg-text.notdef        a character inside SVG text had no glyph
-    image.format.unsupported    a picture in a format the PDF stage cannot decode
+    image.svg.rasterized         Vector mode: a part PDF cannot express as
+                                 vectors was rasterized on its own; the rest
+                                 of the picture stays vector
+    image.svg.filter-unsupported an exotic filter primitive, or
+                                 feTurbulence, was dropped by the SVG engine
+    image.svg.text-unsupported   SVG text on a path, or a glyph-id text run;
+                                 not drawn
+    image.svg.fonts-missing      tripwire: the SVG engine had no font
+                                 registered. Should not occur - report it
+    image.svg.degraded           catch-all for any other SVG-engine degradation
+    image.svg.empty              an <svg> without usable content; skipped
+    image.svg.failed             the SVG could not be rendered; skipped
+    font.uncovered.removed       a character no registered font covers was
+                                 removed (KeepUncoveredCharacters = false)
+    font.uncovered.kept          ... was kept as a missing-glyph shape
+                                 (KeepUncoveredCharacters = true)
+    font.svg-text.notdef         a character inside SVG text had no glyph
+    image.format.unsupported     a picture in a format the PDF stage cannot
+                                 decode
+
+    RETIRED: "image.svg.nativemissing" can no longer be raised - there is no
+    native library in the chain any more. Delete code that matches it.
 
 The full code vocabulary belongs to CodeBrix.PdfDocCreate.Html2Pdf and is
 enumerated in its AGENT-README:
 https://github.com/ellisnet/CodeBrix.PdfDocuments/blob/main/src/CodeBrix.PdfDocCreate.Html2Pdf/AGENT-README.txt
 
 Both surfaces pass the PDF stage's text through VERBATIM - nothing is trimmed,
-re-wrapped or re-worded on the way out. That matters most for the Linux
-native-assets guidance, code "image.svg.nativemissing", whose whole value is in
-naming the two packages it names. Preserve that behaviour when you surface it.
+re-wrapped or re-worded on the way out. A PDF-stage message names the exact
+picture, filter, glyph or reason behind its code, and that detail is its whole
+value; preserve that behaviour when you surface one.
 
 A message means a different thing depending on which stage said it - the Texinfo
 stage is talking about the source, the PDF stage about the markup or the fonts -
@@ -548,12 +568,12 @@ AGENT-README.
         .Where(m => m.StartsWith("Syntax:", StringComparison.Ordinal)).ToList();
 
     //typesetting problems, structured
-    RenderWarning svgSkipped = result.Warnings.PdfItems
-        .FirstOrDefault(i => i.Code == "image.svg.nativemissing");
-    if (svgSkipped != null)
+    RenderWarning svgRasterized = result.Warnings.PdfItems
+        .FirstOrDefault(i => i.Code == "image.svg.rasterized");
+    if (svgRasterized != null)
     {
-        Console.Error.WriteLine(svgSkipped.Message);   //verbatim; names the packages
-        Console.Error.WriteLine($"{svgSkipped.Occurrences} SVG picture(s) skipped");
+        Console.Error.WriteLine(svgRasterized.Message);   //verbatim; names the reason
+        Console.Error.WriteLine($"{svgRasterized.Occurrences} raster fallback(s)");
     }
     int droppedCodePoints = result.Warnings.PdfItems
         .Count(i => i.Category == RenderWarningCategory.Font && i.CodePoint.HasValue);
@@ -573,9 +593,6 @@ texi2pdf.csproj
       </PropertyGroup>
       <ItemGroup>
         <PackageReference Include="CodeBrix.Texinfo2Pdf.MitLicenseForever" Version="*" />
-        <!-- Linux only, and only if your manuals embed SVG pictures. Pick ONE: -->
-        <!-- <PackageReference Include="SkiaSharp.NativeAssets.Linux" Version="*" /> -->
-        <!-- <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="*" /> -->
       </ItemGroup>
     </Project>
 
@@ -636,10 +653,10 @@ PERFORMANCE TIPS
 COMMON PITFALLS TO AVOID
 ========================
 
-  * MISSING SVG PICTURES ON LINUX. The application - not this package - must
-    reference SkiaSharp.NativeAssets.Linux or ...Linux.NoDependencies. Nothing
-    throws; look for the "image.svg.nativemissing" item in Warnings.PdfItems.
-    Never reference both variants.
+  * ASSUMING SVG IS RASTERIZED. By default it is not: SVG is placed as PDF
+    vector content and adds no image XObject to the file. Set
+    Options.Html.SvgPlacement = SvgPlacementMode.Raster when a bitmap is what
+    you want. Nothing about SVG needs a native package, on any OS.
   * OPTIONS ARE LIVE, NOT COPIES. Options.Texinfo and Options.Html belong to
     the renderers underneath and keep whatever you set for every later render.
     (DocumentTitle / DocumentAuthor are the one exception: values filled in
@@ -653,8 +670,9 @@ COMMON PITFALLS TO AVOID
     different depending on the stage; filter TexinfoMessages by category
     prefix and PdfItems by Code. Display prose is not a compatibility surface;
     codes and category words are.
-  * RE-WRAPPING THE NATIVE-ASSETS MESSAGE. Pass "image.svg.nativemissing"'s
-    message through verbatim; its value is the two package names it carries.
+  * RE-WRAPPING A PDF-STAGE MESSAGE. Pass the text of a Warnings.PdfItems
+    entry through verbatim; the picture, reason or code point it names is its
+    whole value.
   * A WRONG BASE DIRECTORY WITH RenderHtmlDocument. The generated markup's
     image paths are relative to the document; the base directory you pass must
     be the directory the pictures were copied into (CopyImagesTo), not the
@@ -689,8 +707,8 @@ WHAT THIS PACKAGE DOES NOT DO
     output, no website split, @math as styled text, @documentencoding reported
     not obeyed, raw blocks skipped, no music engraving without a registered
     renderer) - applies here unchanged.
-  * It does not declare the Linux SkiaSharp native-assets dependency (see the
-    IMPORTANT notice); the application does.
+  * It does not need a native library of any kind, and neither does anything
+    under it; there is nothing for a consuming application to add.
   * It does not fall back to operating-system fonts, and neither does the PDF
     stage under it. Only registered fonts render.
   * It does not fetch remote images (AllowRemoteImages is off, and Texinfo
@@ -721,14 +739,16 @@ WORKING EXAMPLES ON GITHUB
                                     tagged warning merge, the caller mistakes
                                     that throw
     PdfFeaturePassThroughTests.cs   an SVG and a WebP picture travelling into
-                                    the PDF, the "image.svg.nativemissing"
-                                    check, SvgRasterScale and
+                                    the PDF, the vector-SVG canary (no native
+                                    library needed, no image XObject and no
+                                    warning), SvgRasterScale and
                                     KeepUncoveredCharacters through the live
                                     Options.Html, structured PdfItems (Code,
                                     CodePoint, Occurrences), TexinfoPdfFonts
                                     forwarding
     SnippetToPdfGateTests.cs        a registered ILilypondSnippetRenderer whose
-                                    PNG and SVG pictures land in a real PDF; a
+                                    PNG and SVG pictures land in a real PDF (the
+                                    SVG as vector content, no image XObject); a
                                     document with no engraver rendering its
                                     snippets as source. The PNG is built by the
                                     test (TestPng.cs) from first principles.
@@ -750,8 +770,7 @@ QUICK REFERENCE CARD
 ====================
 
     dotnet add package CodeBrix.Texinfo2Pdf.MitLicenseForever
-    # Linux + SVG pictures: ALSO add SkiaSharp.NativeAssets.Linux
-    #                       OR SkiaSharp.NativeAssets.Linux.NoDependencies (never both)
+    # nothing else on any OS - the whole chain is managed code
     using CodeBrix.Texinfo2Pdf;      //+ CodeBrix.Texinfo2Html for TexinfoHtmlResult etc.
 
     var r = new TexinfoPdfRenderer();                //one per thread; reusable
@@ -765,7 +784,9 @@ QUICK REFERENCE CARD
     r.Options.Html.FooterText = "{page} / {pages}";  //default here; "" to remove
     r.Options.Html.DocumentTitle / DocumentAuthor    //else from @settitle / @author
     r.Options.Html.GenerateOutline = true;           //bookmarks from headings
-    r.Options.Html.SvgRasterScale = 2.0;             //0.25 - 8.0
+    r.Options.Html.SvgPlacement = SvgPlacementMode.Vector;  //default; Raster = bitmap
+    r.Options.Html.SvgRasterScale = 2.0;             //0.25 - 8.0; Raster mode, and any
+                                                     //raster fallback in Vector mode
     r.Options.Html.KeepUncoveredCharacters = false;  //true: tofu instead of drop
     r.Options.Html.AllowRemoteImages = false;
     r.Options.Texinfo.PredefinedValues["V"] = "1";   //= @set V 1
@@ -802,7 +823,9 @@ QUICK REFERENCE CARD
 
     Throws only for caller mistakes: ArgumentException (blank path),
     ArgumentNullException (null source/result/html), FileNotFoundException.
-    Codes to know: image.svg.nativemissing  font.uncovered.removed
-                   font.uncovered.kept  font.svg-text.notdef  image.format.unsupported
+    Codes to know: image.svg.rasterized  image.svg.filter-unsupported
+                   image.svg.text-unsupported  image.svg.fonts-missing
+                   font.uncovered.removed  font.uncovered.kept
+                   font.svg-text.notdef  image.format.unsupported
 
 ================================================================================
