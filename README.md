@@ -29,7 +29,8 @@ To embed SVG as a bitmap instead, set the PDF stage's placement mode - the optio
 PDF renderer's own, so no extra package reference is involved:
 
 ```csharp
-using CodeBrix.PdfDocCreate.Html2Pdf;
+using CodeBrix.PdfDocCreate.Html2Pdf;   //SvgPlacementMode
+using CodeBrix.Texinfo2Pdf;             //TexinfoPdfRenderer
 
 var renderer = new TexinfoPdfRenderer();
 renderer.Options.Html.SvgPlacement = SvgPlacementMode.Raster;   //default is Vector
@@ -167,6 +168,20 @@ An identical snippet is engraved once and the picture reused, so a manual that r
 
 Nothing about a document's contents throws: unsupported, malformed or missing constructs degrade to the nearest readable thing and are reported in `result.Warnings`. That includes an exception escaping your own snippet renderer.
 
+## Documentation
+
+Both NuGet packages include an `AGENT-README.txt` - a complete API reference and usage guide written
+for AI coding agents, specific to the package you referenced. Point your agent at that file when it
+is writing code against these libraries.
+
+Additional sample code and usage examples are available in the test projects:
+https://github.com/ellisnet/CodeBrix.Texinfo/tree/main/tests
+
 ## License
 
 The project is licensed under the MIT License. see: https://en.wikipedia.org/wiki/MIT_License
+
+These libraries are original implementations that read the Texinfo file format. They contain no code
+from the GNU Texinfo project or from any other Texinfo implementation, and no affiliation with or
+endorsement by the GNU Project is claimed or implied - "Texinfo" is used here only to name the file
+format these libraries read. See `THIRD-PARTY-NOTICES.txt`, which ships inside both NuGet packages.
