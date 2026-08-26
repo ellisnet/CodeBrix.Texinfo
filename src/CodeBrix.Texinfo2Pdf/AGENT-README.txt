@@ -276,6 +276,12 @@ constructed:
                                             //and only a raster fallback's in
                                             //Vector mode
     bool    KeepUncoveredCharacters false   //see below
+    PdfCffSubsetMode CffSubsetMode  None    //None | Sparse - see below; needs the
+                                            //Html2Pdf that carries it (the
+                                            //PdfDocuments family publish after
+                                            //1.0.238.580); until this package
+                                            //pins that version the member is
+                                            //not there to set
     string  DocumentTitle           null    //filled from @settitle when empty
     string  DocumentAuthor          null    //filled from first @author when empty
 
@@ -299,6 +305,23 @@ covers is removed from the PDF with a "font.uncovered.removed" warning; when
 true it is kept and rendered as the font's missing-glyph shape (a visible tofu
 box or blank) and the warning code is "font.uncovered.kept", so a coverage gap
 leaves a trace in the document instead of silently changing the text.
+
+CffSubsetMode (CodeBrix.PdfDocuments.Pdf.PdfCffSubsetMode, reachable through
+this package's transitive PdfDocuments dependency): how a font with PostScript
+(CFF) outlines - an OpenType .otf you registered through TexinfoPdfFonts /
+Html2PdfFonts.AddFontFile whose glyphs live in a CFF table - is embedded. None
+(default) embeds such a face WHOLE, declared as a TrueType program, exactly as
+every version has; Sparse keeps only the glyphs the document uses (glyph
+numbering, cmap, metrics and subroutines stay) and declares the program as
+PDF 32000-1 section 9.9 asks - /FontFile3 /Subtype /OpenType on a
+/CIDFontType0 - which raises the file to PDF 1.6 when it was lower. The
+packaged fonts all have TrueType outlines and are subset either way, so a
+manual that registers no CFF face is unaffected in both modes. Poppler-based
+readers report the default's declaration as "Mismatch between font type and
+embedded font file" (they render it regardless); Sparse output draws no such
+warning. ⚠ Added to Html2Pdf on 2026-08-26 in the PdfDocuments family publish
+AFTER 1.0.238.580; this paragraph is valid only once this package's
+CodeBrix.PdfDocCreate.Html2Pdf pin has moved to that version.
 
 An @page rule in the document's CSS (for example one you add through
 Options.Texinfo.ExtraCss or a replacement stylesheet) overrides the page size
@@ -788,6 +811,8 @@ QUICK REFERENCE CARD
     r.Options.Html.SvgRasterScale = 2.0;             //0.25 - 8.0; Raster mode, and any
                                                      //raster fallback in Vector mode
     r.Options.Html.KeepUncoveredCharacters = false;  //true: tofu instead of drop
+    r.Options.Html.CffSubsetMode = PdfCffSubsetMode.Sparse;  //default None (whole CFF
+                                                     //face); Html2Pdf after 1.0.238.580
     r.Options.Html.AllowRemoteImages = false;
     r.Options.Texinfo.PredefinedValues["V"] = "1";   //= @set V 1
     r.Options.Texinfo.IncludeSearchPaths / ImageSearchPaths / ExtraCss
