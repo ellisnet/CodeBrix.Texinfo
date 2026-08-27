@@ -276,12 +276,9 @@ constructed:
                                             //and only a raster fallback's in
                                             //Vector mode
     bool    KeepUncoveredCharacters false   //see below
-    PdfCffSubsetMode CffSubsetMode  None    //None | Sparse - see below; needs the
-                                            //Html2Pdf that carries it (the
-                                            //PdfDocuments family publish after
-                                            //1.0.238.580); until this package
-                                            //pins that version the member is
-                                            //not there to set
+    PdfCffSubsetMode CffSubsetMode  None    //None | Sparse - see below
+                                            //(Html2Pdf 1.0.238.1192, pinned
+                                            //since Texinfo2Pdf 1.0.238.1201)
     string  DocumentTitle           null    //filled from @settitle when empty
     string  DocumentAuthor          null    //filled from first @author when empty
 
@@ -319,9 +316,8 @@ packaged fonts all have TrueType outlines and are subset either way, so a
 manual that registers no CFF face is unaffected in both modes. Poppler-based
 readers report the default's declaration as "Mismatch between font type and
 embedded font file" (they render it regardless); Sparse output draws no such
-warning. ⚠ Added to Html2Pdf on 2026-08-26 in the PdfDocuments family publish
-AFTER 1.0.238.580; this paragraph is valid only once this package's
-CodeBrix.PdfDocCreate.Html2Pdf pin has moved to that version.
+warning. Added to Html2Pdf in the PdfDocuments family publish 1.0.238.1192
+(2026-08-26); this package carries it since 1.0.238.1201.
 
 An @page rule in the document's CSS (for example one you add through
 Options.Texinfo.ExtraCss or a replacement stylesheet) overrides the page size
@@ -812,7 +808,7 @@ QUICK REFERENCE CARD
                                                      //raster fallback in Vector mode
     r.Options.Html.KeepUncoveredCharacters = false;  //true: tofu instead of drop
     r.Options.Html.CffSubsetMode = PdfCffSubsetMode.Sparse;  //default None (whole CFF
-                                                     //face); Html2Pdf after 1.0.238.580
+                                                     //face); since 1.0.238.1201
     r.Options.Html.AllowRemoteImages = false;
     r.Options.Texinfo.PredefinedValues["V"] = "1";   //= @set V 1
     r.Options.Texinfo.IncludeSearchPaths / ImageSearchPaths / ExtraCss
