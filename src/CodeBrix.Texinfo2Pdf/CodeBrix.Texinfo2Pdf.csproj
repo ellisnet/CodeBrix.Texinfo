@@ -86,7 +86,7 @@
       needed on any operating system; the former Linux native-assets requirement is
       gone, and no PackageReference for one belongs here or in any consumer.
     -->
-    <PackageReference Include="CodeBrix.PdfDocCreate.Html2Pdf.MitLicenseForever" Version="1.0.240.106" />
+    <PackageReference Include="CodeBrix.PdfDocCreate.Html2Pdf.MitLicenseForever" Version="1.0.243.38" />
   </ItemGroup>
 
   <ItemGroup>
