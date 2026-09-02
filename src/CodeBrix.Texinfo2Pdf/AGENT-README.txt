@@ -276,9 +276,8 @@ constructed:
                                             //and only a raster fallback's in
                                             //Vector mode
     bool    KeepUncoveredCharacters false   //see below
-    PdfCffSubsetMode CffSubsetMode  None    //None | Sparse - see below
-                                            //(Html2Pdf 1.0.238.1192, pinned
-                                            //since Texinfo2Pdf 1.0.238.1201)
+    PdfCffSubsetMode CffSubsetMode  None    //None | Sparse | Compact -
+                                            //see below
     string  DocumentTitle           null    //filled from @settitle when empty
     string  DocumentAuthor          null    //filled from first @author when empty
 
@@ -311,13 +310,18 @@ Html2PdfFonts.AddFontFile whose glyphs live in a CFF table - is embedded. None
 every version has; Sparse keeps only the glyphs the document uses (glyph
 numbering, cmap, metrics and subroutines stay) and declares the program as
 PDF 32000-1 section 9.9 asks - /FontFile3 /Subtype /OpenType on a
-/CIDFontType0 - which raises the file to PDF 1.6 when it was lower. The
-packaged fonts all have TrueType outlines and are subset either way, so a
-manual that registers no CFF face is unaffected in both modes. Poppler-based
-readers report the default's declaration as "Mismatch between font type and
-embedded font file" (they render it regardless); Sparse output draws no such
-warning. Added to Html2Pdf in the PdfDocuments family publish 1.0.238.1192
-(2026-08-26); this package carries it since 1.0.238.1201.
+/CIDFontType0 - which raises the file to PDF 1.6 when it was lower; Compact
+does everything Sparse does and ALSO empties the subroutines no kept glyph
+calls and the strings no kept glyph is named by - on a text face most of what
+Sparse leaves behind (the PdfDocuments package's own measured figure: keeping
+nine glyphs of C059-Roman, the program is 70,299 bytes whole, 24,728 Sparse
+and 4,685 Compact) - and falls back to Sparse for a program it cannot handle
+safely. Glyph indices are NEVER renumbered, in any mode. The packaged fonts
+all have TrueType outlines and are subset either way, so a manual that
+registers no CFF face is unaffected in every mode. Poppler-based readers
+report the default's declaration as "Mismatch between font type and embedded
+font file" (they render it regardless); Sparse and Compact output draw no
+such warning.
 
 An @page rule in the document's CSS (for example one you add through
 Options.Texinfo.ExtraCss or a replacement stylesheet) overrides the page size
@@ -807,8 +811,8 @@ QUICK REFERENCE CARD
     r.Options.Html.SvgRasterScale = 2.0;             //0.25 - 8.0; Raster mode, and any
                                                      //raster fallback in Vector mode
     r.Options.Html.KeepUncoveredCharacters = false;  //true: tofu instead of drop
-    r.Options.Html.CffSubsetMode = PdfCffSubsetMode.Sparse;  //default None (whole CFF
-                                                     //face); since 1.0.238.1201
+    r.Options.Html.CffSubsetMode = PdfCffSubsetMode.Compact; //default None (whole CFF
+                                                     //face); Sparse | Compact subset it
     r.Options.Html.AllowRemoteImages = false;
     r.Options.Texinfo.PredefinedValues["V"] = "1";   //= @set V 1
     r.Options.Texinfo.IncludeSearchPaths / ImageSearchPaths / ExtraCss
