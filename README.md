@@ -9,6 +9,42 @@ CodeBrix.Texinfo supports applications and assemblies that target Microsoft .NET
 Microsoft .NET version 10.0 is a Long-Term Supported (LTS) version of .NET, and was released on Nov 11, 2025; and will be actively supported by Microsoft until Nov 14, 2028.
 Please update your C#/.NET code and projects to the latest LTS version of Microsoft .NET.
 
+## Installation
+
+```
+dotnet add package CodeBrix.Texinfo2Pdf.MitLicenseForever
+```
+
+```
+dotnet add package CodeBrix.Texinfo2Html.MitLicenseForever
+```
+
+**Which one do I reference?** Install `CodeBrix.Texinfo2Pdf.MitLicenseForever` when what you want is a PDF - it brings the whole conversion chain with it. Install `CodeBrix.Texinfo2Html.MitLicenseForever` on its own when you want the intermediate HTML and CSS, or when you want to post-process the markup before it is rendered.
+
+* `CodeBrix.Texinfo2Html.MitLicenseForever` - takes a standard Texinfo (`.texi`) file, or a LilyPond/CodeBrix.LilyPort `.tely` file, and renders it into HTML and CSS. The markup it emits is written for PDF generation rather than for the browser: it stays inside the documented HTML and CSS subset that `CodeBrix.PdfDocCreate.Html2Pdf` understands, so the output is ready to be fed straight into that library. This package has no package dependencies at all.
+* `CodeBrix.Texinfo2Pdf.MitLicenseForever` - performs the whole conversion in one step: it renders the Texinfo source to HTML and CSS with `CodeBrix.Texinfo2Html`, then hands that markup to `CodeBrix.PdfDocCreate.Html2Pdf` to produce the finished PDF document. It depends on `CodeBrix.Texinfo2Html.MitLicenseForever` and on `CodeBrix.PdfDocCreate.Html2Pdf.MitLicenseForever`, and pulls both in automatically; no version pinning is needed in the consuming project.
+
+Note that the NuGet package ids carry the `.MitLicenseForever` suffix but the assemblies and namespaces do not - there are no packages named plain `CodeBrix.Texinfo2Html` or `CodeBrix.Texinfo2Pdf`:
+
+* NuGet package IDs: `CodeBrix.Texinfo2Html.MitLicenseForever` and `CodeBrix.Texinfo2Pdf.MitLicenseForever`
+* Assemblies and primary namespaces: `CodeBrix.Texinfo2Html` and `CodeBrix.Texinfo2Pdf` - i.e. `using CodeBrix.Texinfo2Pdf;`
+
+The suffix is a CodeBrix family convention that records the license the packages will always be published under.
+
+XML documentation (IntelliSense) ships alongside both assemblies. Nothing else has to be installed or referenced, on any operating system - see below.
+
+## CodeBrix.Texinfo supports:
+
+* Standard GNU Texinfo (`.texi`) source files
+* The `.tely` Texinfo dialect produced by LilyPond and CodeBrix.LilyPort
+* Rendering Texinfo to HTML and CSS that is ready for PDF generation
+* Producing a finished, nicely-formatted PDF in a single call
+* A seam for engraving `@lilypond` music, so a `.tely` manual can print its music as music
+
+`CodeBrix.Texinfo2Html` renders Texinfo to HTML and CSS end to end. It resolves cross references to real links, prints indices, places footnotes at the end of the chapter they belong to, carries a document's pictures along with it, and reads the LilyPond music environments of a `.tely` document so that a renderer you register can engrave them. It expands a document's own macros — `@macro`, `@rmacro` and `@linemacro`, including the ones a manual uses to define new definition commands — which is what lets a real manual work at all. It covers the general-Texinfo commands a GNU manual is built from as well: the `@deffn` definition family, numbered floats and their captions, the full index set including the indices a document defines for itself, and the accent and glyph commands.
+
+Anything a document uses that these libraries do not implement becomes a warning and the closest readable degradation, never an exception — so the way to find out whether your manual works is to render it and read `result.Warnings`. The whole English LilyPond documentation set renders, as do the GNU Texinfo manual and the GNU Make manual.
+
 ## Fully managed on every operating system
 
 Both libraries are pure managed .NET. There is no native library, no runtime identifier and no
@@ -41,51 +77,9 @@ renderer.Options.Html.SvgRasterScale = 3.0;                     //default 2.0
 to a part that had to fall back to a raster, and does nothing at all to a picture that stays
 entirely vector.
 
-## Project status
-
-Both libraries are complete and have public APIs — see the samples below.
-
-`CodeBrix.Texinfo2Html` renders Texinfo to HTML and CSS end to end. It resolves cross references to real links, prints indices, places footnotes at the end of the chapter they belong to, carries a document's pictures along with it, and reads the LilyPond music environments of a `.tely` document so that a renderer you register can engrave them. It expands a document's own macros — `@macro`, `@rmacro` and `@linemacro`, including the ones a manual uses to define new definition commands — which is what lets a real manual work at all. It covers the general-Texinfo commands a GNU manual is built from as well: the `@deffn` definition family, numbered floats and their captions, the full index set including the indices a document defines for itself, and the accent and glyph commands.
-
-Anything a document uses that these libraries do not implement becomes a warning and the closest readable degradation, never an exception — so the way to find out whether your manual works is to render it and read `result.Warnings`. The whole English LilyPond documentation set renders, as do the GNU Texinfo manual and the GNU Make manual.
-
-`CodeBrix.Texinfo2Pdf` performs the whole conversion in one call, and is the package to install if what you want is a PDF.
-
-## The two libraries
-
-### CodeBrix.Texinfo2Html
-
-Takes a standard Texinfo (`.texi`) file — or a LilyPond/CodeBrix.LilyPort `.tely` file — and renders it into HTML and CSS. The markup it emits is written for PDF generation rather than for the browser: it stays inside the documented HTML and CSS subset that `CodeBrix.PdfDocCreate.Html2Pdf` understands, so the output is ready to be fed straight into that library to produce a nicely-formatted PDF.
-
-NuGet package: `CodeBrix.Texinfo2Html.MitLicenseForever`
-
-    dotnet add package CodeBrix.Texinfo2Html.MitLicenseForever
-
-### CodeBrix.Texinfo2Pdf
-
-A convenience library that performs the whole conversion in one step. It renders the Texinfo source to HTML and CSS with `CodeBrix.Texinfo2Html`, then hands that markup to `CodeBrix.PdfDocCreate.Html2Pdf` to produce the finished PDF document. Use this package when you want a PDF; use `CodeBrix.Texinfo2Html` on its own when you want the intermediate HTML and CSS, or when you want to post-process the markup before it is rendered.
-
-`CodeBrix.Texinfo2Pdf.MitLicenseForever` depends on `CodeBrix.Texinfo2Html.MitLicenseForever` and on `CodeBrix.PdfDocCreate.Html2Pdf.MitLicenseForever`, so installing it brings the whole conversion chain with it.
-
-Nothing else is needed, on any operating system: the whole chain is managed code, and a document's SVG pictures are placed into the PDF as vector content — see the note near the top of this document.
-
-NuGet package: `CodeBrix.Texinfo2Pdf.MitLicenseForever`
-
-    dotnet add package CodeBrix.Texinfo2Pdf.MitLicenseForever
-
-## CodeBrix.Texinfo supports:
-
-* Standard GNU Texinfo (`.texi`) source files
-* The `.tely` Texinfo dialect produced by LilyPond and CodeBrix.LilyPort
-* Rendering Texinfo to HTML and CSS that is ready for PDF generation
-* Producing a finished, nicely-formatted PDF in a single call
-* A seam for engraving `@lilypond` music, so a `.tely` manual can print its music as music
-
-Note that the NuGet package ids carry the `.MitLicenseForever` suffix but the assemblies and namespaces do not — they are simply `CodeBrix.Texinfo2Html` and `CodeBrix.Texinfo2Pdf`. The suffix is a CodeBrix family convention that records the license the packages will always be published under.
-
 ## Sample Code
 
-Turn a Texinfo manual into a PDF:
+### Turn a Texinfo Manual into a PDF
 
 ```csharp
 using CodeBrix.Texinfo2Pdf;
@@ -99,7 +93,7 @@ foreach (var warning in result.Warnings.Messages) { Console.WriteLine(warning); 
 
 The output directory is created if it is not there, the document's pictures are carried along without your having to place them, and what lands in `out` is one PDF and nothing else. Leave the output path off entirely and the PDF is written beside the source file.
 
-Set the page up, or give the document a running header and footer of your own:
+### Set the Page Up, or Add a Header and Footer
 
 ```csharp
 var renderer = new TexinfoPdfRenderer();
@@ -112,7 +106,7 @@ var pdf = renderer.RenderFileToBytes("manual.texi");            //or RenderFile,
 
 `Options.Texinfo` and `Options.Html` are the real option objects of the two libraries underneath, so anything either of them can do is reachable without a second package reference.
 
-Restyle the intermediate before it becomes a PDF:
+### Restyle the Intermediate Before It Becomes a PDF
 
 ```csharp
 var renderer = new TexinfoPdfRenderer();
@@ -124,7 +118,7 @@ var myCss = html.Css.Replace("#111111", "#000033");   //or replace it wholesale
 renderer.RenderHtml(html, "out/manual.pdf", myCss);
 ```
 
-Or write the pair out, edit the files by hand, and come back in:
+### Write the HTML and CSS Out, Edit Them, and Come Back In
 
 ```csharp
 var path = html.WriteToDirectory("work");   //work/manual.html plus work/manual.css
@@ -133,6 +127,8 @@ renderer.RenderHtmlFile(path, "out/manual.pdf");
 ```
 
 Warnings from both halves of the conversion arrive in one list, each tagged with the half that produced it, and split out as `Warnings.TexinfoMessages` and `Warnings.PdfMessages` when you want to tell a problem in the source from a problem in the typesetting.
+
+### Generate Only the HTML and CSS
 
 If all you want is the HTML and CSS, install `CodeBrix.Texinfo2Html` on its own and use `TexinfoHtmlRenderer` directly — it has no dependencies at all beyond .NET, on any operating system:
 
@@ -143,7 +139,9 @@ var result = new TexinfoHtmlRenderer().GenerateFromFile("manual.texi");
 var htmlPath = result.WriteToDirectory("out");   //manual.html, manual.css, and the pictures
 ```
 
-Engrave the music of a `.tely` manual. Without a renderer registered, every `@lilypond` snippet is shown as its source text — this library will not take on a dependency on LilyPond, so it defines the seam and leaves the engraving to a consumer who already has an engraver:
+### Engrave the Music of a `.tely` Manual
+
+Without a renderer registered, every `@lilypond` snippet is shown as its source text — this library will not take on a dependency on LilyPond, so it defines the seam and leaves the engraving to a consumer who already has an engraver:
 
 ```csharp
 public sealed class MyEngraver : ILilypondSnippetRenderer
@@ -174,14 +172,19 @@ Both NuGet packages include an `AGENT-README.txt` - a complete API reference and
 for AI coding agents, specific to the package you referenced. Point your agent at that file when it
 is writing code against these libraries.
 
-Additional sample code and usage examples are available in the test projects:
+Additional sample code and usage examples are available in the `CodeBrix.Texinfo2Html.Tests` and
+`CodeBrix.Texinfo2Pdf.Tests` projects:
 https://github.com/ellisnet/CodeBrix.Texinfo/tree/main/tests
 
 ## License
 
-The project is licensed under the MIT License. see: https://en.wikipedia.org/wiki/MIT_License
+CodeBrix.Texinfo is licensed under the MIT License - see the
+[LICENSE](https://github.com/ellisnet/CodeBrix.Texinfo/blob/main/LICENSE) file.
 
 These libraries are original implementations that read the Texinfo file format. They contain no code
 from the GNU Texinfo project or from any other Texinfo implementation, and no affiliation with or
 endorsement by the GNU Project is claimed or implied - "Texinfo" is used here only to name the file
-format these libraries read. See `THIRD-PARTY-NOTICES.txt`, which ships inside both NuGet packages.
+format these libraries read.
+
+For licensing and provenance information about the open source code included in
+this package, see [THIRD-PARTY-NOTICES.txt](https://github.com/ellisnet/CodeBrix.Texinfo/blob/main/THIRD-PARTY-NOTICES.txt).

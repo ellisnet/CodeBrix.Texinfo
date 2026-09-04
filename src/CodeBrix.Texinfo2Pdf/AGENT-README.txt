@@ -50,8 +50,9 @@ apt/brew/msi step, no runtime identifier, no native-assets package. Do not add
 one - not here, not in a consuming application - and do not report the absence
 of one as a missing dependency.
 
-  UPGRADING: this package pins CodeBrix.PdfDocCreate.Html2Pdf 1.0.238.580 (the
-  version in its csproj). Earlier releases of that stage rasterized SVG
+  UPGRADING: this package pins the CodeBrix.PdfDocCreate.Html2Pdf version it
+  was built against - the release in which the PDF stage is fully managed - so
+  no manual pin is required. Earlier releases of that stage rasterized SVG
   through a Skia-based engine, and asked Linux applications to reference
   SkiaSharp.NativeAssets.Linux or ...Linux.NoDependencies themselves. That
   requirement is GONE. An application that referenced one of those packages

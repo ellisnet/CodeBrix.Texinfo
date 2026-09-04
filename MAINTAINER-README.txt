@@ -181,12 +181,12 @@ Design decisions in the emitter that look like bugs and must NOT be "fixed":
   * WARNINGS, NEVER EXCEPTIONS, for anything in a document. Exceptions are for
     caller mistakes only (blank path, missing file, null argument).
 
-NO NATIVE PACKAGE MAY BE ADDED ANYWHERE IN THIS REPOSITORY. From
-CodeBrix.PdfDocCreate.Html2Pdf 1.0.238.580 the PDF stage draws SVG with
-CodeBrix.Imaging.Drawing.NoSkia - no SkiaSharp, no native library of any kind,
-on any operating system - and places SVG into the PDF as vector content by
-default. Do NOT add a native-assets PackageReference to src/, to tests/, or to
-any sample or consuming application; the explanatory comment in
+NO NATIVE PACKAGE MAY BE ADDED ANYWHERE IN THIS REPOSITORY. From the
+CodeBrix.PdfDocCreate.Html2Pdf release this repository references, the PDF stage
+draws SVG with CodeBrix.Imaging.Drawing.NoSkia - no SkiaSharp, no native library
+of any kind, on any operating system - and places SVG into the PDF as vector
+content by default. Do NOT add a native-assets PackageReference to src/, to
+tests/, or to any sample or consuming application; the explanatory comment in
 src/CodeBrix.Texinfo2Pdf/CodeBrix.Texinfo2Pdf.csproj is there to stop exactly
 that. The consumer-facing explanation lives in
 src/CodeBrix.Texinfo2Pdf/AGENT-README.txt and README.md.

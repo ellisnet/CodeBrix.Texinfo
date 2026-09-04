@@ -79,7 +79,7 @@
 
   <ItemGroup>
     <!--
-      The PDF stage. From 1.0.238.580 Html2Pdf is fully managed - its SVG engine is
+      The PDF stage. Html2Pdf is fully managed - its SVG engine is
       CodeBrix.Imaging.Drawing.NoSkia, with no SkiaSharp and no native library of any
       kind - and it places SVG as PDF VECTOR content by default (HtmlRenderOptions.
       SvgPlacement, reachable here as Options.Html.SvgPlacement). Nothing extra is
