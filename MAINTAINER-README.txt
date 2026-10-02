@@ -202,8 +202,10 @@ Standard SDK build, from the repository root:
 
 Both libraries target net10.0 only. GeneratePackageOnBuild is true on both
 library projects, so every build of a library project also produces a .nupkg
-(see PACKAGING AND PUBLISHING). There are no build scripts, no
-Directory.Build.props and no extra targets.
+(see PACKAGING AND PUBLISHING). There are no build scripts or Directory.Build.props. Texinfo2Pdf packs
+buildTransitive/CodeBrix.Texinfo2Pdf.MitLicenseForever.targets to include PDF
+font assets and their index in Android application builds. The portable font
+registration helper extracts them from caller-supplied streams at startup.
 
 
 TESTING
@@ -389,6 +391,7 @@ WHAT SHIPS IN EACH NUPKG (from the csproj None/Pack items):
         icon-codebrix-128.png, README.md, THIRD-PARTY-NOTICES.txt (repo root)
         AGENT-README.txt  <- src/CodeBrix.Texinfo2Pdf/AGENT-README.txt
                              (Texinfo2Pdf guide), packed under the same name
+        buildTransitive/CodeBrix.Texinfo2Pdf.MitLicenseForever.targets
 
 So the root AGENT-README.txt must stay the Texinfo2Html consumer guide and
 src/CodeBrix.Texinfo2Pdf/AGENT-README.txt the Texinfo2Pdf one; each package

@@ -1,0 +1,32 @@
+<Project>
+  <PropertyGroup>
+    <TexinfoPdfIncludeAndroidFonts Condition="'$(TexinfoPdfIncludeAndroidFonts)' == ''">true</TexinfoPdfIncludeAndroidFonts>
+  </PropertyGroup>
+  <!-- The PDF renderer needs filesystem fonts. Ship all faces as Android assets;
+       TexinfoPdfFonts.AddPackagedFontAssets extracts/registers them at startup. -->
+  <Target Name="_TexinfoPdfAndroidFonts"
+          DependsOnTargets="ResolveReferences"
+          BeforeTargets="_ComputeAndroidAssetsPaths"
+          Condition="'$(TargetPlatformIdentifier)' == 'android' and '$(AndroidApplication)' == 'true' and '$(TexinfoPdfIncludeAndroidFonts)' == 'true'">
+    <ItemGroup>
+      <_TexinfoPdfFontAssembly Include="@(ReferencePath)"
+          Condition="'%(Filename)' == 'CodeBrix.Platform.Fonts.Roboto' or '%(Filename)' == 'CodeBrix.Platform.Fonts.Merriweather' or '%(Filename)' == 'CodeBrix.Platform.Fonts.RobotoMono' or '%(Filename)' == 'CodeBrix.Platform.Fonts.NotoMusic'" />
+      <_TexinfoPdfFontFile Include="%(_TexinfoPdfFontAssembly.RootDir)%(_TexinfoPdfFontAssembly.Directory)%(_TexinfoPdfFontAssembly.Filename)/Fonts/*.ttf;%(_TexinfoPdfFontAssembly.RootDir)%(_TexinfoPdfFontAssembly.Directory)%(_TexinfoPdfFontAssembly.Filename)/Fonts/*.otf">
+        <FontPackage>%(_TexinfoPdfFontAssembly.Filename)</FontPackage>
+      </_TexinfoPdfFontFile>
+      <_TexinfoPdfFontAsset Include="@(_TexinfoPdfFontFile)">
+        <LogicalName>CodeBrix.Texinfo2Pdf.Fonts/%(_TexinfoPdfFontFile.FontPackage)/%(_TexinfoPdfFontFile.Filename)%(_TexinfoPdfFontFile.Extension)</LogicalName>
+      </_TexinfoPdfFontAsset>
+      <AndroidAsset Include="@(_TexinfoPdfFontAsset)" />
+    </ItemGroup>
+    <Error Condition="'@(_TexinfoPdfFontAsset)' == ''" Text="Texinfo2Pdf could not locate its packaged PDF fonts. Restore the font dependencies or disable TexinfoPdfIncludeAndroidFonts and supply fonts explicitly." />
+    <MakeDir Directories="$(IntermediateOutputPath)TexinfoPdfFonts" />
+    <WriteLinesToFile File="$(IntermediateOutputPath)TexinfoPdfFonts/fonts.txt"
+                      Lines="@(_TexinfoPdfFontAsset->'%(LogicalName)')"
+                      Overwrite="true" WriteOnlyWhenDifferent="true" Encoding="UTF-8" />
+    <ItemGroup>
+      <AndroidAsset Include="$(IntermediateOutputPath)TexinfoPdfFonts/fonts.txt" LogicalName="CodeBrix.Texinfo2Pdf.Fonts/fonts.txt" />
+      <FileWrites Include="$(IntermediateOutputPath)TexinfoPdfFonts/fonts.txt" />
+    </ItemGroup>
+  </Target>
+</Project>

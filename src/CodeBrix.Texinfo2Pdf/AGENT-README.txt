@@ -111,12 +111,15 @@ Namespace:      CodeBrix.Texinfo2Pdf
 License:        MIT
 Dependencies:   CodeBrix.Texinfo2Html.MitLicenseForever
                 CodeBrix.PdfDocCreate.Html2Pdf.MitLicenseForever
+                CodeBrix.PdfDocuments.MitLicenseForever >= 1.0.271.1182
                 (and, through Html2Pdf, its own dependencies including the
                 CodeBrix.Platform.Fonts packages the PDF is set in: Roboto,
                 Merriweather, RobotoMono and NotoMusic)
-Requirements:   none, on any operating system. No native-assets package, no
-                runtime identifier, no system font, no apt/brew/msi step
-                (see the notice above).
+Requirements:   no native-assets package, system font or apt/brew/msi step.
+                The PdfDocuments minimum includes Android font-resolver support;
+                earlier versions can throw during font registration.
+                Android apps must extract/register their packaged fonts once
+                at startup (see ANDROID FONT ASSETS below).
 
 Installing this one package brings the whole conversion chain with it. You do
 not need a separate reference to CodeBrix.Texinfo2Html.MitLicenseForever: its
@@ -439,6 +442,10 @@ a consumer of this package never has to name Html2Pdf. Registration is
 process-global; all methods are idempotent and may be called before or after
 renders have happened - additions take effect on the next render.
 
+    static IReadOnlyList<string> AddPackagedFontAssets(Func<string, Stream> openAsset,
+                                                      string storageDirectory)
+    static IReadOnlyList<string> AddFontAssets(IEnumerable<string> assetNames,
+        Func<string, Stream> openAsset, string storageDirectory, bool includeInFallback = false)
     static void AddFontDirectory(string directory)
     static void AddFontFile(string filePath, bool includeInFallback = false)
     static void AddFontFiles(IEnumerable<string> filePaths, bool includeInFallback = false)
@@ -470,6 +477,55 @@ renders a manual's flat, natural and sharp signs and the supplementary-plane
 music symbols. The PDF stage never falls back to operating-system fonts: a
 script no registered font covers is dropped (or kept as tofu) with a
 font.uncovered.* warning, never substituted from the system.
+
+
+ANDROID FONT ASSETS
+===================
+Android assets are not ordinary files under AppContext.BaseDirectory. The NuGet
+package includes a buildTransitive target that adds every TTF/OTF face from its
+Roboto, Merriweather, RobotoMono and NotoMusic dependencies as AndroidAsset items,
+plus a generated manifest. It runs only for Android application projects. These
+assets use the CodeBrix.Texinfo2Pdf.Fonts/ prefix so UI font trimming does not
+remove faces needed for PDF rendering. Including all faces increases APK size.
+
+Before the first PDF render, in the Android application:
+
+    using System.IO;
+    using CodeBrix.Texinfo2Pdf;
+
+    var context = Android.App.Application.Context;
+    string fontDirectory = Path.Combine(context.FilesDir.AbsolutePath, "texinfo-pdf-fonts");
+    TexinfoPdfFonts.AddPackagedFontAssets(
+        name => context.Assets.Open(name), fontDirectory);
+
+The helper reads the manifest, copies each asset to app-private storage, and
+registers all faces together, including them in the glyph fallback chain. The
+library itself stays net10.0 and has no Android API dependency. The callback
+supplies fresh readable streams; the helper disposes them, including on failure,
+and supports non-seekable streams. No external-storage permission is required
+for the app-private directory in this example.
+
+Extracted names are content hashes plus .ttf/.otf; repeated calls reuse the same
+files and changed asset bytes get new names. Asset names are never used as output
+paths. Partial temporary files are removed on failure, while completed files
+remain reusable. Keep the files for the lifetime of rendering, since the renderer
+may read them later. Old versions are not automatically deleted. Register once
+at startup, before rendering: registration is process-global and the underlying
+registry keeps the first registration of each family (it does not hot-reload).
+
+For custom assets, call AddFontAssets with the complete list of faces for each
+family and the same asset-opening callback. Set includeInFallback=true for fonts
+that should cover characters absent from the primary families. The current four
+font packages contribute 148 font files (about 103 MiB uncompressed), so automatic
+packaging and extraction have a substantial storage cost. To ship a smaller,
+application-selected font set and manage all font packaging yourself, set TexinfoPdfIncludeAndroidFonts=false in the Android
+head, include your own AndroidAsset files, and call AddFontAssets. With this opt-out
+AddPackagedFontAssets is unavailable unless you also supply its manifest.
+
+Missing assets, unreadable streams, invalid fonts, and filesystem errors throw;
+these are configuration failures, not document warnings. Use RenderTexinfoToBytes
+for in-memory source, and app-private paths or app-managed streams for output.
+Texinfo @include/@image still require accessible files and a suitable baseDirectory.
 
 
 COMPLETE EXAMPLES
@@ -577,8 +633,8 @@ AGENT-README.
     using CodeBrix.PdfDocCreate.Html2Pdf;
     using CodeBrix.Texinfo2Pdf;
 
-    TexinfoPdfFonts.AddFontFile("/fonts/MyCorporateSerif-Regular.ttf");
-    TexinfoPdfFonts.AddFontFile("/fonts/MyCorporateSerif-Bold.ttf");
+    TexinfoPdfFonts.AddFontFiles(new[] {
+        "/fonts/MyCorporateSerif-Regular.ttf", "/fonts/MyCorporateSerif-Bold.ttf" });
     TexinfoPdfFonts.AddFontFilesFromDirectory("/fonts/noto-extras", includeInFallback: true);
 
     var renderer = new TexinfoPdfRenderer();
@@ -794,7 +850,7 @@ QUICK REFERENCE CARD
 ====================
 
     dotnet add package CodeBrix.Texinfo2Pdf.MitLicenseForever
-    # nothing else on any OS - the whole chain is managed code
+    # managed code; Android also needs startup font extraction/registration
     using CodeBrix.Texinfo2Pdf;      //+ CodeBrix.Texinfo2Html for TexinfoHtmlResult etc.
 
     var r = new TexinfoPdfRenderer();                //one per thread; reusable
@@ -840,7 +896,9 @@ QUICK REFERENCE CARD
     p.Warnings.Count  p.Warnings.ToString()
     TexinfoPdfWarnings.TexinfoStageTag == "[texinfo]"   TexinfoPdfWarnings.PdfStageTag == "[pdf]"
 
-    // fonts (process-global, idempotent)
+    // fonts (process-global, idempotent; register before rendering)
+    TexinfoPdfFonts.AddPackagedFontAssets(openAsset, privateFontDirectory) //Android startup
+    TexinfoPdfFonts.AddFontAssets(names, openAsset, privateFontDirectory)  //custom assets
     TexinfoPdfFonts.AddFontDirectory(dir)                     //package-shaped folders
     TexinfoPdfFonts.AddFontFile(path, includeInFallback: false)
     TexinfoPdfFonts.AddFontFiles(paths, includeInFallback: false)

@@ -188,3 +188,29 @@ format these libraries read.
 
 For licensing and provenance information about the open source code included in
 this package, see [THIRD-PARTY-NOTICES.txt](https://github.com/ellisnet/CodeBrix.Texinfo/blob/main/THIRD-PARTY-NOTICES.txt).
+
+## Android PDF fonts
+
+The Texinfo2Pdf NuGet package automatically includes its PDF font families as
+Android assets. Register them once at startup, before rendering:
+
+```csharp
+var context = Android.App.Application.Context;
+TexinfoPdfFonts.AddPackagedFontAssets(
+    name => context.Assets.Open(name),
+    System.IO.Path.Combine(context.FilesDir.AbsolutePath, "texinfo-pdf-fonts"));
+```
+
+This extracts the assets into app-private storage and registers all font faces.
+Automatic packaging currently includes 148 font faces (about 103 MiB before
+compression). Use the opt-out below to ship a smaller app-selected set.
+
+The portable library has no Android dependency. Extracted files are reused by
+content hash and must remain available while rendering. Old versions are not
+automatically deleted. Including all faces increases APK size.
+
+For custom font assets, use `TexinfoPdfFonts.AddFontAssets(names, openAsset,
+storageDirectory, includeInFallback: true)`. The helper owns and disposes the
+streams returned by `openAsset`. Set `TexinfoPdfIncludeAndroidFonts=false` in the
+Android project to opt out of automatic font packaging and supply your own fonts.
+See the PDF package's `AGENT-README.txt` for details and error behavior.

@@ -1,5 +1,8 @@
+using System;
 using System.Collections.Generic;
+using System.IO;
 using CodeBrix.PdfDocCreate.Html2Pdf.Fonts;
+using CodeBrix.Texinfo2Pdf.Rendering;
 
 namespace CodeBrix.Texinfo2Pdf;
 
@@ -20,6 +23,66 @@ namespace CodeBrix.Texinfo2Pdf;
 /// </remarks>
 public static class TexinfoPdfFonts
 {
+    /// <summary>
+    /// Extracts and registers the PDF font assets included by this package in Android apps.
+    /// </summary>
+    /// <param name="openAsset">Opens an asset by its logical name, for example Android AssetManager.Open.
+    /// The returned streams are disposed by this method.</param>
+    /// <param name="storageDirectory">A persistent app-private directory for extracted fonts.</param>
+    /// <returns>The extracted font paths. Keep these files for the lifetime of PDF rendering.</returns>
+    /// <remarks>Call once at startup before rendering. Requires this package's Android build assets;
+    /// no Android types are referenced by this portable API. All supplied font families are added
+    /// to the fallback chain. The first registration of a family wins in the underlying registry.</remarks>
+    public static IReadOnlyList<string> AddPackagedFontAssets(Func<string, Stream> openAsset,
+        string storageDirectory)
+    {
+        ArgumentNullException.ThrowIfNull(openAsset);
+        ArgumentException.ThrowIfNullOrWhiteSpace(storageDirectory);
+        using var manifest = openAsset("CodeBrix.Texinfo2Pdf.Fonts/fonts.txt")
+            ?? throw new InvalidOperationException("The PDF font asset opener returned no manifest stream.");
+        using var reader = new StreamReader(manifest);
+        var names = new List<string>();
+        string line;
+        while ((line = reader.ReadLine()) != null)
+        {
+            if (!string.IsNullOrWhiteSpace(line)) { names.Add(line.Trim()); }
+        }
+        if (names.Count == 0)
+        {
+            throw new InvalidOperationException("The packaged PDF font manifest is empty.");
+        }
+        return AddFontAssets(names, openAsset, storageDirectory, includeInFallback: true);
+    }
+
+    /// <summary>
+    /// Extracts TTF/OTF asset streams to persistent storage and registers all faces together.
+    /// </summary>
+    /// <param name="assetNames">Asset names ending in .ttf or .otf. Include all faces of a family in one call.</param>
+    /// <param name="openAsset">Opens each named asset at its beginning. Returned streams are disposed here;
+    /// non-seekable streams are supported.</param>
+    /// <param name="storageDirectory">An app-private directory, created if needed. Extracted files are named
+    /// by their content hash and reused on repeated calls; asset paths cannot escape this directory.</param>
+    /// <param name="includeInFallback">Whether to add the families to the per-glyph fallback chain.</param>
+    /// <returns>The extracted paths, in asset order.</returns>
+    /// <remarks>Registration is process-global. Keep extracted files available while rendering; this method
+    /// does not delete old versions. Stream, filesystem and invalid-font errors propagate. On failure,
+    /// completed extractions remain reusable and incomplete temporary files are removed. Register the full
+    /// set of faces before the first render; existing family registrations are not replaced.</remarks>
+    public static IReadOnlyList<string> AddFontAssets(IEnumerable<string> assetNames,
+        Func<string, Stream> openAsset, string storageDirectory, bool includeInFallback = false)
+    {
+        ArgumentNullException.ThrowIfNull(assetNames);
+        ArgumentNullException.ThrowIfNull(openAsset);
+        ArgumentException.ThrowIfNullOrWhiteSpace(storageDirectory);
+        var paths = new List<string>();
+        foreach (var name in assetNames)
+        {
+            paths.Add(FontAssetStorage.Extract(name, openAsset, storageDirectory));
+        }
+        Html2PdfFonts.AddFontFiles(paths, includeInFallback);
+        return paths.AsReadOnly();
+    }
+
     /// <summary>
     /// Adds a directory to probe for <c>CodeBrix.Platform.Fonts.*</c> package folders
     /// (the <c>&lt;Name&gt;/Fonts/*.ttf</c> + manifest layout the font packages ship).
