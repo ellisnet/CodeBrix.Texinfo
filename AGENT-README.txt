@@ -19,7 +19,7 @@ It targets .NET 10 or later.
 It reads two input dialects:
 
     .texi     Standard GNU Texinfo source files.
-    .tely     The Texinfo dialect produced by LilyPond and CodeBrix.LilyPort,
+    .tely     The Texinfo dialect produced by LilyPond,
               in which Texinfo markup is interleaved with LilyPond music
               snippets.
 

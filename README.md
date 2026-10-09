@@ -2,7 +2,7 @@
 
 CodeBrix.Texinfo is a pair of fully managed, cross-platform .NET libraries that turn GNU Texinfo documentation into nicely-formatted PDF documents.
 `CodeBrix.Texinfo2Html` reads a Texinfo source file and renders it into HTML and CSS written specifically for PDF generation, and `CodeBrix.Texinfo2Pdf` takes that markup the rest of the way and produces the finished PDF using `CodeBrix.PdfDocCreate.Html2Pdf`.
-Both libraries read standard Texinfo (`.texi`) files as well as the `.tely` Texinfo dialect produced by LilyPond and CodeBrix.LilyPort.
+Both libraries read standard Texinfo (`.texi`) files as well as the `.tely` Texinfo dialect produced by LilyPond.
 They are provided as .NET 10 libraries and the associated `CodeBrix.Texinfo2Html.MitLicenseForever` and `CodeBrix.Texinfo2Pdf.MitLicenseForever` NuGet packages.
 
 CodeBrix.Texinfo supports applications and assemblies that target Microsoft .NET version 10.0 and later.
@@ -21,8 +21,8 @@ dotnet add package CodeBrix.Texinfo2Html.MitLicenseForever
 
 **Which one do I reference?** Install `CodeBrix.Texinfo2Pdf.MitLicenseForever` when what you want is a PDF - it brings the whole conversion chain with it. Install `CodeBrix.Texinfo2Html.MitLicenseForever` on its own when you want the intermediate HTML and CSS, or when you want to post-process the markup before it is rendered.
 
-* `CodeBrix.Texinfo2Html.MitLicenseForever` - takes a standard Texinfo (`.texi`) file, or a LilyPond/CodeBrix.LilyPort `.tely` file, and renders it into HTML and CSS. The markup it emits is written for PDF generation rather than for the browser: it stays inside the documented HTML and CSS subset that `CodeBrix.PdfDocCreate.Html2Pdf` understands, so the output is ready to be fed straight into that library. This package has no package dependencies at all.
-* `CodeBrix.Texinfo2Pdf.MitLicenseForever` - performs the whole conversion in one step: it renders the Texinfo source to HTML and CSS with `CodeBrix.Texinfo2Html`, then hands that markup to `CodeBrix.PdfDocCreate.Html2Pdf` to produce the finished PDF document. It depends on `CodeBrix.Texinfo2Html.MitLicenseForever` and on `CodeBrix.PdfDocCreate.Html2Pdf.MitLicenseForever`, and pulls both in automatically; no version pinning is needed in the consuming project.
+* `CodeBrix.Texinfo2Html.MitLicenseForever` - takes a standard Texinfo (`.texi`) file, or a LilyPond `.tely` file, and renders it into HTML and CSS. The markup it emits is written for PDF generation rather than for the browser: it stays inside the documented HTML and CSS subset that `CodeBrix.PdfDocCreate.Html2Pdf` understands, so the output is ready to be fed straight into that library. This package has no package dependencies at all.
+* `CodeBrix.Texinfo2Pdf.MitLicenseForever` - performs the whole conversion in one step: it renders the Texinfo source to HTML and CSS with `CodeBrix.Texinfo2Html`, then hands that markup to `CodeBrix.PdfDocCreate.Html2Pdf` to produce the finished PDF document. It depends on `CodeBrix.Texinfo2Html.MitLicenseForever`, `CodeBrix.PdfDocCreate.Html2Pdf.MitLicenseForever` and `CodeBrix.PdfDocuments.MitLicenseForever`, and pulls them in automatically; no version pinning is needed in the consuming project.
 
 Note that the NuGet package ids carry the `.MitLicenseForever` suffix but the assemblies and namespaces do not - there are no packages named plain `CodeBrix.Texinfo2Html` or `CodeBrix.Texinfo2Pdf`:
 
@@ -36,7 +36,7 @@ XML documentation (IntelliSense) ships alongside both assemblies. Nothing else h
 ## CodeBrix.Texinfo supports:
 
 * Standard GNU Texinfo (`.texi`) source files
-* The `.tely` Texinfo dialect produced by LilyPond and CodeBrix.LilyPort
+* The `.tely` Texinfo dialect produced by LilyPond
 * Rendering Texinfo to HTML and CSS that is ready for PDF generation
 * Producing a finished, nicely-formatted PDF in a single call
 * A seam for engraving `@lilypond` music, so a `.tely` manual can print its music as music

@@ -54,7 +54,7 @@
     <Product>CodeBrix.Texinfo2Pdf</Product>
     <Title>CodeBrix.Texinfo2Pdf</Title>
     <Authors>Jeremy Ellis</Authors>
-    <Description>A fully managed, cross-platform convenience library that turns GNU Texinfo source files directly into PDF documents. It renders standard Texinfo (.texi) documents and the .tely Texinfo dialect produced by LilyPond and CodeBrix.LilyPort to HTML and CSS with CodeBrix.Texinfo2Html, then feeds that markup to CodeBrix.PdfDocCreate.Html2Pdf to produce the finished, nicely formatted PDF in a single step.</Description>
+    <Description>A fully managed, cross-platform convenience library that turns GNU Texinfo source files directly into PDF documents. It renders standard Texinfo (.texi) documents and the .tely Texinfo dialect produced by LilyPond, in which Texinfo markup is interleaved with LilyPond music snippets, to HTML and CSS written for PDF generation, then lays that markup out as the finished, nicely formatted PDF in a single step.</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/ellisnet/CodeBrix.Texinfo</PackageProjectUrl>
     <RepositoryUrl>https://github.com/ellisnet/CodeBrix.Texinfo</RepositoryUrl>

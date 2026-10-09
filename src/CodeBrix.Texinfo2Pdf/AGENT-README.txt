@@ -19,7 +19,7 @@ It targets .NET 10 or later.
 It reads two input dialects:
 
     .texi     Standard GNU Texinfo source files.
-    .tely     The Texinfo dialect produced by LilyPond and CodeBrix.LilyPort,
+    .tely     The Texinfo dialect produced by LilyPond,
               in which Texinfo markup is interleaved with LilyPond music
               snippets.
 
@@ -111,13 +111,13 @@ Namespace:      CodeBrix.Texinfo2Pdf
 License:        MIT
 Dependencies:   CodeBrix.Texinfo2Html.MitLicenseForever
                 CodeBrix.PdfDocCreate.Html2Pdf.MitLicenseForever
-                CodeBrix.PdfDocuments.MitLicenseForever >= 1.0.271.1182
+                CodeBrix.PdfDocuments.MitLicenseForever
                 (and, through Html2Pdf, its own dependencies including the
                 CodeBrix.Platform.Fonts packages the PDF is set in: Roboto,
                 Merriweather, RobotoMono and NotoMusic)
 Requirements:   no native-assets package, system font or apt/brew/msi step.
-                The PdfDocuments minimum includes Android font-resolver support;
-                earlier versions can throw during font registration.
+                The pinned PdfDocuments release includes Android font-resolver
+                support; do not pin an older one.
                 Android apps must extract/register their packaged fonts once
                 at startup (see ANDROID FONT ASSETS below).
 

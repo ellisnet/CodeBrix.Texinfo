@@ -5,7 +5,8 @@ Samples, tools and other content in this repository that is not part of a NuGet 
 
 There are no samples, tools, demo applications or documentation folders in this
 repository. There is no samples/, tools/ or docs/ folder; the only content
-outside the two packaged library projects is the tests/ folder.
+outside the two packaged library projects (and buildTransitive/, which ships
+inside the Texinfo2Pdf package) is the tests/ folder.
 
 
 TESTS (the only non-package content)

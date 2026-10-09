@@ -54,7 +54,7 @@
     <Product>CodeBrix.Texinfo2Html</Product>
     <Title>CodeBrix.Texinfo2Html</Title>
     <Authors>Jeremy Ellis</Authors>
-    <Description>A fully managed, cross-platform renderer that turns GNU Texinfo source files into HTML and CSS. It reads standard Texinfo (.texi) documents as well as the .tely Texinfo dialect produced by LilyPond and CodeBrix.LilyPort, and it emits markup written specifically for PDF generation - the output is intended to be handed directly to CodeBrix.PdfDocCreate.Html2Pdf to produce a nicely formatted PDF document.</Description>
+    <Description>A fully managed, cross-platform renderer that turns GNU Texinfo source files into HTML and CSS. It reads standard Texinfo (.texi) documents as well as the .tely Texinfo dialect produced by LilyPond, in which Texinfo markup is interleaved with LilyPond music snippets, and it emits markup written specifically for PDF generation - the output stays inside a small, documented HTML and CSS subset so that it can be handed directly to a managed HTML-to-PDF renderer to produce a nicely formatted PDF document.</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/ellisnet/CodeBrix.Texinfo</PackageProjectUrl>
     <RepositoryUrl>https://github.com/ellisnet/CodeBrix.Texinfo</RepositoryUrl>
