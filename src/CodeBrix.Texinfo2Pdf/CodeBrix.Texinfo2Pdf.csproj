@@ -86,9 +86,9 @@
       needed on any operating system; the former Linux native-assets requirement is
       gone, and no PackageReference for one belongs here or in any consumer.
     -->
-    <PackageReference Include="CodeBrix.PdfDocCreate.Html2Pdf.MitLicenseForever" Version="1.0.271.1182" />
+    <PackageReference Include="CodeBrix.PdfDocCreate.Html2Pdf.MitLicenseForever" Version="1.0.285.692" />
     <!-- Earlier transitive versions throw during font resolver initialization on Android. -->
-    <PackageReference Include="CodeBrix.PdfDocuments.MitLicenseForever" Version="1.0.271.1182" />
+    <PackageReference Include="CodeBrix.PdfDocuments.MitLicenseForever" Version="1.0.285.692" />
   </ItemGroup>
 
   <ItemGroup>
